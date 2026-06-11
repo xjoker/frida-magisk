@@ -1,0 +1,141 @@
+name: Build module
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - v*
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      frida_version:
+        description: Frida release version to package, or "latest"
+        required: true
+        default: latest
+      allow_unverified:
+        description: Allow Frida versions without pinned local SHA-256
+        required: true
+        type: boolean
+        default: true
+      publish_release:
+        description: Publish or update GitHub Release v<frida_version>
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Resolve Frida version
+        shell: bash
+        run: |
+          resolve_latest() {
+            curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/frida/frida/releases/latest" \
+              | python3 -c 'import json, sys; print(json.load(sys.stdin)["tag_name"])'
+          }
+
+          version="${{ inputs.frida_version }}"
+          if [[ -z "$version" && "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "$version" || "$version" == "latest" ]]; then
+            version="$(resolve_latest)"
+          fi
+          version="${version#v}"
+
+          echo "FRIDA_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
+
+          if [[ "${{ inputs.allow_unverified }}" == "true" || "$GITHUB_EVENT_NAME" == "schedule" || "$GITHUB_REF_TYPE" == "tag" || "$version" != "17.9.1" ]]; then
+            echo "FRIDA_ALLOW_UNVERIFIED=1" >> "$GITHUB_ENV"
+          fi
+          echo "Using Frida $version"
+
+      - name: Check scheduled release state
+        id: release_state
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "skip_build=true" >> "$GITHUB_OUTPUT"
+            echo "Release $RELEASE_TAG already exists; skipping scheduled build."
+          else
+            echo "skip_build=false" >> "$GITHUB_OUTPUT"
+            echo "Release $RELEASE_TAG does not exist; building latest Frida."
+          fi
+
+      - name: Install build dependencies
+        if: steps.release_state.outputs.skip_build != 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build zip unzip xz-utils curl
+
+      - name: Set up Android SDK
+        if: steps.release_state.outputs.skip_build != 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        if: steps.release_state.outputs.skip_build != 'true'
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Build module
+        if: steps.release_state.outputs.skip_build != 'true'
+        shell: bash
+        run: scripts/build-all.sh
+
+      - name: Upload workflow artifact
+        if: steps.release_state.outputs.skip_build != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: frida-magisk-${{ env.FRIDA_VERSION }}
+          path: |
+            dist/frida-magisk-*.zip
+            dist/frida-magisk-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: steps.release_state.outputs.skip_build != 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="$RELEASE_TAG"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          fi
+
+          notes="Automated frida-magisk build for Frida $FRIDA_VERSION."
+          if [[ -n "${FRIDA_ALLOW_UNVERIFIED:-}" ]]; then
+            notes="$notes"$'\n\n'"Note: this Frida version is not locally pinned in scripts/fetch-frida-assets.sh; assets were downloaded from the official frida/frida GitHub release during CI."
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/frida-magisk-*.zip dist/frida-magisk-*.zip.sha256 --clobber
+          else
+            gh release create "$tag" dist/frida-magisk-*.zip dist/frida-magisk-*.zip.sha256 \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --notes "$notes"
+          fi

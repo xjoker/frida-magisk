@@ -1,0 +1,6 @@
+id=frida_magisk
+name=Frida Magisk
+version=17.9.1
+versionCode=170901
+author=xjoker
+description=Run bundled frida-server at boot with watchdog restart and Action status/control entry.

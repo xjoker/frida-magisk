@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Frida Magisk</title>
+    <link rel="stylesheet" href="/internal/insets.css" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">frida-magisk</p>
+          <h1>Frida Server</h1>
+          <p id="auto-refresh" class="auto-refresh">自动刷新：开启</p>
+        </div>
+        <button id="refresh" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态">↻</button>
+      </header>
+
+      <section class="status-panel" aria-labelledby="health-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">运行状态</p>
+            <h2 id="health-title">服务健康检查</h2>
+          </div>
+          <span id="health-badge" class="badge neutral">检查中</span>
+        </div>
+
+        <dl class="status-grid">
+          <div>
+            <dt>当前模式</dt>
+            <dd id="mode-status">检查中</dd>
+          </div>
+          <div>
+            <dt>frida-server</dt>
+            <dd id="server-status">检查中</dd>
+          </div>
+          <div>
+            <dt>Watchdog</dt>
+            <dd id="watchdog-status">检查中</dd>
+          </div>
+          <div>
+            <dt>PID</dt>
+            <dd id="pid">-</dd>
+          </div>
+          <div>
+            <dt>自动重启次数</dt>
+            <dd id="restarts">-</dd>
+          </div>
+          <div>
+            <dt>Gadget 后端</dt>
+            <dd id="gadget-backend">-</dd>
+          </div>
+          <div>
+            <dt>设备 ABI</dt>
+            <dd id="gadget-abi">-</dd>
+          </div>
+        </dl>
+
+        <div class="service-control" aria-label="服务操作">
+          <div class="state-line">
+            <span class="state-dot" id="server-dot" aria-hidden="true"></span>
+            <div>
+              <p class="state-title" id="server-state-title">读取中</p>
+              <p class="state-detail" id="server-state-detail">正在检查 frida-server 和 watchdog 状态</p>
+            </div>
+          </div>
+          <div class="control-buttons">
+            <button id="service-toggle" class="primary" type="button">开启服务</button>
+            <button id="restart" type="button">重启</button>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="mode-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">模式切换</p>
+            <h2 id="mode-title">Server / Gadget</h2>
+          </div>
+        </div>
+
+        <div class="segmented" role="group" aria-label="运行模式">
+          <button class="mode-button" data-mode="server" type="button">普通 Server</button>
+          <button class="mode-button" data-mode="gadget" type="button">Gadget</button>
+          <button class="mode-button" data-mode="hybrid" type="button">混合</button>
+        </div>
+        <p id="gadget-warning" class="notice warning" hidden>当前 ABI 缺少内置 Gadget 后端；混合模式下普通 frida-server 仍会运行，Zygisk Gadget 注入暂不生效。</p>
+        <p class="hint">混合模式会保持普通 frida-server 可用，并启用内置 Zygisk native injector。纯 Gadget 模式会停止普通 frida-server，只依赖 Gadget 监听入口。</p>
+      </section>
+
+      <section aria-labelledby="info-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">基础信息</p>
+            <h2 id="info-title">模块与连接</h2>
+          </div>
+        </div>
+
+        <dl class="rows">
+          <div>
+            <dt>模块版本</dt>
+            <dd id="version">-</dd>
+          </div>
+          <div>
+            <dt>监听地址</dt>
+            <dd id="listen">-</dd>
+          </div>
+          <div>
+            <dt>检查间隔</dt>
+            <dd id="interval">-</dd>
+          </div>
+          <div>
+            <dt>最近状态</dt>
+            <dd id="message">-</dd>
+          </div>
+          <div>
+            <dt>更新时间</dt>
+            <dd id="updated">-</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="settings-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">连接设置</p>
+            <h2 id="settings-title">监听地址</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>常用模式</span>
+          <select id="listen-preset">
+            <option value="127.0.0.1:27042">USB 直连 · 127.0.0.1:27042</option>
+            <option value="127.0.0.1:65000">ADB 转发 · 127.0.0.1:65000</option>
+            <option value="0.0.0.0:65000">局域网 · 0.0.0.0:65000</option>
+            <option value="custom">自定义</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>IPv4:端口</span>
+          <input id="listen-input" type="text" inputmode="decimal" autocomplete="off" value="127.0.0.1:27042" />
+        </label>
+
+        <p class="hint">保存后会立即重启 frida-server。局域网模式会把调试端口暴露给同一网络。</p>
+        <button id="save-listen" class="primary save-button" type="button">保存监听地址</button>
+      </section>
+
+      <section aria-labelledby="gadget-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Gadget 配置</p>
+            <h2 id="gadget-title">目标注入配置</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>目标包名</span>
+          <input id="gadget-package" type="text" autocomplete="off" placeholder="com.example.app" />
+        </label>
+
+        <div class="package-row">
+          <label class="field">
+            <span>已安装应用</span>
+            <select id="package-select">
+              <option value="">先读取应用列表</option>
+            </select>
+          </label>
+          <button id="load-packages" type="button">读取列表</button>
+        </div>
+
+        <label class="field">
+          <span>Gadget 监听地址</span>
+          <input id="gadget-listen" type="text" inputmode="decimal" autocomplete="off" value="127.0.0.1:27043" />
+        </label>
+
+        <div class="two-fields">
+          <label class="field">
+            <span>加载策略</span>
+            <select id="gadget-on-load">
+              <option value="wait">wait</option>
+              <option value="resume">resume</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>运行时</span>
+            <select id="gadget-runtime">
+              <option value="qjs">qjs</option>
+              <option value="v8">v8</option>
+            </select>
+          </label>
+        </div>
+
+        <dl class="rows compact">
+          <div>
+            <dt>Profile</dt>
+            <dd id="gadget-profile">-</dd>
+          </div>
+          <div>
+            <dt>Config</dt>
+            <dd id="gadget-config">-</dd>
+          </div>
+        </dl>
+
+        <p class="hint">这里会为每个已内置 ABI 写入 Frida Gadget 配置；修改目标包名后，需要重启目标 App 进程才会触发早期注入。</p>
+        <button id="save-gadget" class="primary save-button" type="button">保存 Gadget 配置</button>
+      </section>
+
+      <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+    </main>
+
+    <script>
+      if (window.apatch !== undefined && window.apatch.ksu === undefined) {
+        window.ksu = window.apatch;
+      }
+    </script>
+    <script src="./app.js"></script>
+  </body>
+</html>
