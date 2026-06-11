@@ -2,6 +2,8 @@
 
 这个目录是 Magisk / KernelSU 兼容模块模板。构建脚本会把官方 Frida server、Frida Gadget 和本项目的 Zygisk injector 复制进此模板，再输出可刷入 ZIP。
 
+构建脚本会输出 `universal` 包和 per-ABI 包。per-ABI 包只包含对应 ABI 的 `frida-server`、Frida Gadget 和 Zygisk injector；刷入错误 ABI 时安装脚本会失败并提示缺少对应 ABI 的 `frida-server`。
+
 ## 模块 ID
 
 ```text

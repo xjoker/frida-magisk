@@ -4,6 +4,11 @@ ui_print "- Frida Magisk"
 ui_print "- Bundled frida-server watchdog module"
 ui_print "- ARCH=$ARCH IS64BIT=$IS64BIT API=$API"
 
+if [ -f "$MODPATH/package.env" ]; then
+  . "$MODPATH/package.env"
+fi
+ui_print "- Package ABI: ${FRIDA_MAGISK_PACKAGE_ABI:-universal}"
+
 case "$ARCH" in
   arm64)
     MODULE_ABI=arm64-v8a

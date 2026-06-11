@@ -126,7 +126,7 @@ jobs:
             tag="$GITHUB_REF_NAME"
           fi
 
-          notes="Automated frida-magisk build for Frida $FRIDA_VERSION."
+          notes="Automated frida-magisk build for Frida $FRIDA_VERSION."$'\n\n'"Assets include a universal ZIP and per-ABI ZIPs. Prefer the matching ABI package for smaller downloads."
           if [[ -n "${FRIDA_ALLOW_UNVERIFIED:-}" ]]; then
             notes="$notes"$'\n\n'"Note: this Frida version is not locally pinned in scripts/fetch-frida-assets.sh; assets were downloaded from the official frida/frida GitHub release during CI."
           fi

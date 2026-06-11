@@ -56,6 +56,13 @@ Build a specific Frida version:
 FRIDA_VERSION=17.9.1 scripts/build-all.sh
 ```
 
+`scripts/build-all.sh` builds the universal package and all per-ABI packages by default. To build only selected package targets:
+
+```bash
+MODULE_ABIS="arm64-v8a" scripts/build-all.sh
+MODULE_ABIS="universal arm64-v8a" scripts/build-all.sh
+```
+
 `scripts/fetch-frida-assets.sh` contains pinned SHA-256 checks for known versions. To build a Frida version that is not pinned locally, opt in explicitly:
 
 ```bash
@@ -65,9 +72,19 @@ FRIDA_VERSION=18.0.0 FRIDA_ALLOW_UNVERIFIED=1 scripts/build-all.sh
 Outputs:
 
 ```text
-dist/frida-magisk-<frida-version>.zip
-dist/frida-magisk-<frida-version>.zip.sha256
+dist/frida-magisk-<frida-version>-universal.zip
+dist/frida-magisk-<frida-version>-arm64-v8a.zip
+dist/frida-magisk-<frida-version>-armeabi-v7a.zip
+dist/frida-magisk-<frida-version>-x86.zip
+dist/frida-magisk-<frida-version>-x86_64.zip
+dist/*.sha256
 ```
+
+Download guidance:
+
+- Use `arm64-v8a` for most modern Android phones.
+- Use `universal` only when the target ABI is unknown or one package must support multiple devices.
+- Installing a package for the wrong ABI fails during module installation because `customize.sh` requires a matching `bin/<abi>/frida-server`.
 
 ## GitHub Actions And Releases
 
@@ -255,7 +272,7 @@ The WebUI is packaged under:
 /data/adb/modules/frida_magisk/webroot/
 ```
 
-KernelSU / SukiSU launches `webroot/index.html`. The page calls the same on-device `action.sh` interface through `ksu.exec`. It does not depend on external web assets.
+KernelSU / SukiSU launches `webroot/index.html`. The page calls the same on-device `action.sh` interface through `ksu.exec`. It does not depend on external web assets. The UI defaults to English and includes a language switcher for Simplified Chinese.
 
 ## Safe Operating Procedure For AI Agents
 

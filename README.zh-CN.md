@@ -56,6 +56,13 @@ scripts/build-module.sh
 FRIDA_VERSION=17.9.1 scripts/build-all.sh
 ```
 
+`scripts/build-all.sh` 默认构建 universal 包和所有 per-ABI 包。只构建指定包类型：
+
+```bash
+MODULE_ABIS="arm64-v8a" scripts/build-all.sh
+MODULE_ABIS="universal arm64-v8a" scripts/build-all.sh
+```
+
 `scripts/fetch-frida-assets.sh` 对已知版本内置 SHA-256 固定校验。构建未固定校验值的 Frida 版本时需要显式允许：
 
 ```bash
@@ -65,9 +72,19 @@ FRIDA_VERSION=18.0.0 FRIDA_ALLOW_UNVERIFIED=1 scripts/build-all.sh
 产物：
 
 ```text
-dist/frida-magisk-<frida-version>.zip
-dist/frida-magisk-<frida-version>.zip.sha256
+dist/frida-magisk-<frida-version>-universal.zip
+dist/frida-magisk-<frida-version>-arm64-v8a.zip
+dist/frida-magisk-<frida-version>-armeabi-v7a.zip
+dist/frida-magisk-<frida-version>-x86.zip
+dist/frida-magisk-<frida-version>-x86_64.zip
+dist/*.sha256
 ```
+
+下载建议：
+
+- 大多数现代 Android 真机使用 `arm64-v8a`。
+- 只有在不确定目标 ABI，或一个包必须支持多台不同 ABI 设备时才下载 `universal`。
+- 刷错 ABI 包会在模块安装阶段失败，因为 `customize.sh` 会检查是否存在匹配的 `bin/<abi>/frida-server`。
 
 ## GitHub Actions 和 Release
 
@@ -255,7 +272,7 @@ WebUI 安装路径：
 /data/adb/modules/frida_magisk/webroot/
 ```
 
-KernelSU / SukiSU 会打开 `webroot/index.html`。页面通过 `ksu.exec` 调用同一个设备侧 `action.sh` 接口，不依赖外部在线资源。
+KernelSU / SukiSU 会打开 `webroot/index.html`。页面通过 `ksu.exec` 调用同一个设备侧 `action.sh` 接口，不依赖外部在线资源。界面默认英文，并提供简体中文切换。
 
 ## AI 代理安全操作流程
 
