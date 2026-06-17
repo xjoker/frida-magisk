@@ -2,21 +2,18 @@
 
 MODDIR=${0%/*}
 MODID=frida_magisk
-BIN="$MODDIR/bin/frida-server"
 CONFIG="$MODDIR/config.env"
 RUNDIR="$MODDIR/run"
-PIDFILE="$RUNDIR/frida-server.pid"
-WATCHDOG_PIDFILE="$RUNDIR/watchdog.pid"
-STATE="$RUNDIR/status.env"
-MANUAL_STOP="$RUNDIR/manual_stop"
 GADGET_DIR="$MODDIR/gadget"
-GADGET_PROFILE="$GADGET_DIR/profile.json"
-RUNTIME_DIR="/data/local/tmp/frida_magisk"
-RUNTIME_GADGET_DIR="$RUNTIME_DIR/gadget"
 
 FRIDA_MODE=hybrid
 FRIDA_LISTEN=127.0.0.1:27042
 WATCHDOG_INTERVAL=5
+FRIDA_SERVER_BASENAME=frida-server
+FRIDA_PID_BASENAME=frida-server
+FRIDA_RUNTIME_DIR=/data/local/tmp/frida_magisk
+GADGET_BASENAME=libfrida-gadget.so
+GADGET_CONFIG_BASENAME=libfrida-gadget.config.so
 GADGET_TARGET_PACKAGE=
 GADGET_LISTEN=127.0.0.1:27043
 GADGET_ON_LOAD=wait
@@ -24,8 +21,20 @@ GADGET_RUNTIME=qjs
 GADGET_INCLUDE_CHILDREN=no
 
 if [ -f "$CONFIG" ]; then
+  [ -f "$MODDIR/package.env" ] && . "$MODDIR/package.env"
   . "$CONFIG"
+elif [ -f "$MODDIR/package.env" ]; then
+  . "$MODDIR/package.env"
 fi
+
+BIN="$MODDIR/bin/$FRIDA_SERVER_BASENAME"
+PIDFILE="$RUNDIR/$FRIDA_PID_BASENAME.pid"
+WATCHDOG_PIDFILE="$RUNDIR/$FRIDA_PID_BASENAME.watchdog.pid"
+STATE="$RUNDIR/$FRIDA_PID_BASENAME.status.env"
+MANUAL_STOP="$RUNDIR/$FRIDA_PID_BASENAME.manual_stop"
+GADGET_PROFILE="$GADGET_DIR/profile.json"
+RUNTIME_DIR="$FRIDA_RUNTIME_DIR"
+RUNTIME_GADGET_DIR="$RUNTIME_DIR/gadget"
 
 ensure_rundir() {
   [ -d "$RUNDIR" ] || mkdir -p "$RUNDIR"
@@ -52,7 +61,7 @@ pid_cmdline() {
 }
 
 is_frida_pid() {
-  is_alive "$1" && pid_cmdline "$1" | grep -q "frida-server"
+  is_alive "$1" && pid_cmdline "$1" | grep -q "$FRIDA_SERVER_BASENAME"
 }
 
 find_frida_pid() {
@@ -63,7 +72,7 @@ find_frida_pid() {
     return 0
   fi
 
-  for pid in $(pidof frida-server 2>/dev/null); do
+  for pid in $(pidof "$FRIDA_SERVER_BASENAME" 2>/dev/null); do
     if is_frida_pid "$pid"; then
       echo "$pid"
       return 0
@@ -108,7 +117,7 @@ start_frida() {
     chmod 0755 "$BIN" 2>/dev/null
   fi
   if [ ! -x "$BIN" ]; then
-    write_state "failed" "bin/frida-server is missing or not executable" "" "${1:-0}"
+    write_state "failed" "server binary is missing or not executable" "" "${1:-0}"
     return 1
   fi
 
@@ -272,19 +281,19 @@ device_abi() {
 }
 
 current_gadget_library() {
-  echo "$GADGET_DIR/$(device_abi)/libfrida-gadget.so"
+  echo "$GADGET_DIR/$(device_abi)/$GADGET_BASENAME"
 }
 
 current_gadget_config() {
-  echo "$GADGET_DIR/$(device_abi)/libfrida-gadget.config.so"
+  echo "$GADGET_DIR/$(device_abi)/$GADGET_CONFIG_BASENAME"
 }
 
 runtime_gadget_library() {
-  echo "$RUNTIME_GADGET_DIR/$(device_abi)/libfrida-gadget.so"
+  echo "$RUNTIME_GADGET_DIR/$(device_abi)/$GADGET_BASENAME"
 }
 
 runtime_gadget_config() {
-  echo "$RUNTIME_GADGET_DIR/$(device_abi)/libfrida-gadget.config.so"
+  echo "$RUNTIME_GADGET_DIR/$(device_abi)/$GADGET_CONFIG_BASENAME"
 }
 
 stage_gadget_runtime() {
@@ -300,10 +309,10 @@ stage_gadget_runtime() {
   abi=$(device_abi)
   src_dir="$GADGET_DIR/$abi"
   dst_dir="$RUNTIME_GADGET_DIR/$abi"
-  src_so="$src_dir/libfrida-gadget.so"
-  dst_so="$dst_dir/libfrida-gadget.so"
-  src_config="$src_dir/libfrida-gadget.config.so"
-  dst_config="$dst_dir/libfrida-gadget.config.so"
+  src_so="$src_dir/$GADGET_BASENAME"
+  dst_so="$dst_dir/$GADGET_BASENAME"
+  src_config="$src_dir/$GADGET_CONFIG_BASENAME"
+  dst_config="$dst_dir/$GADGET_CONFIG_BASENAME"
   tmp_so="$dst_so.tmp.$$"
   tmp_config="$dst_config.tmp.$$"
 
@@ -344,6 +353,11 @@ write_config() {
     echo "FRIDA_MODE=$FRIDA_MODE"
     echo "FRIDA_LISTEN=$FRIDA_LISTEN"
     echo "WATCHDOG_INTERVAL=$WATCHDOG_INTERVAL"
+    echo "FRIDA_SERVER_BASENAME=$FRIDA_SERVER_BASENAME"
+    echo "FRIDA_PID_BASENAME=$FRIDA_PID_BASENAME"
+    echo "FRIDA_RUNTIME_DIR=$FRIDA_RUNTIME_DIR"
+    echo "GADGET_BASENAME=$GADGET_BASENAME"
+    echo "GADGET_CONFIG_BASENAME=$GADGET_CONFIG_BASENAME"
     echo "GADGET_TARGET_PACKAGE=$GADGET_TARGET_PACKAGE"
     echo "GADGET_LISTEN=$GADGET_LISTEN"
     echo "GADGET_ON_LOAD=$GADGET_ON_LOAD"
@@ -357,7 +371,7 @@ write_config() {
 gadget_backend_status() {
   local abi
   abi=$(device_abi)
-  if [ -f "$MODDIR/zygisk/$abi.so" ] && [ -f "$GADGET_DIR/$abi/libfrida-gadget.so" ]; then
+  if [ -f "$MODDIR/zygisk/$abi.so" ] && [ -f "$GADGET_DIR/$abi/$GADGET_BASENAME" ]; then
     echo "internal"
     return 0
   fi
@@ -387,8 +401,8 @@ write_gadget_config() {
 
   for abi_dir in "$GADGET_DIR"/*; do
     [ -d "$abi_dir" ] || continue
-    [ -f "$abi_dir/libfrida-gadget.so" ] || continue
-    config_path="$abi_dir/libfrida-gadget.config.so"
+    [ -f "$abi_dir/$GADGET_BASENAME" ] || continue
+    config_path="$abi_dir/$GADGET_CONFIG_BASENAME"
     config_tmp="$config_path.tmp.$$"
     {
       echo "{"
@@ -680,7 +694,7 @@ case "$1" in
     set_mode "$2"
     ;;
   set-gadget)
-    set_gadget "$2" "$3" "$4" "$5"
+    set_gadget "$2" "${3:-$GADGET_LISTEN}" "${4:-$GADGET_ON_LOAD}" "${5:-$GADGET_RUNTIME}" "${6:-$GADGET_INCLUDE_CHILDREN}"
     ;;
   clear-gadget)
     clear_gadget

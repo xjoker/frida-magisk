@@ -1,4 +1,4 @@
-name: Build module
+name: Build official module
 
 on:
   push:
@@ -31,6 +31,7 @@ permissions:
 
 jobs:
   build:
+    if: github.ref_type != 'tag' || !endsWith(github.ref_name, '-antidetect')
     runs-on: ubuntu-latest
 
     steps:
@@ -108,10 +109,10 @@ jobs:
         if: steps.release_state.outputs.skip_build != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: frida-magisk-${{ env.FRIDA_VERSION }}
+          name: frida-magisk-official-${{ env.FRIDA_VERSION }}
           path: |
-            dist/frida-magisk-*.zip
-            dist/frida-magisk-*.zip.sha256
+            dist/frida-magisk-[0-9]*.zip
+            dist/frida-magisk-[0-9]*.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -126,15 +127,15 @@ jobs:
             tag="$GITHUB_REF_NAME"
           fi
 
-          notes="Automated frida-magisk build for Frida $FRIDA_VERSION."$'\n\n'"Assets include a universal ZIP and per-ABI ZIPs. Prefer the matching ABI package for smaller downloads."
+          notes="Automated frida-magisk official build for Frida $FRIDA_VERSION."$'\n\n'"Assets include a universal ZIP and per-ABI ZIPs. Prefer the matching ABI package for smaller downloads."
           if [[ -n "${FRIDA_ALLOW_UNVERIFIED:-}" ]]; then
             notes="$notes"$'\n\n'"Note: this Frida version is not locally pinned in scripts/fetch-frida-assets.sh; assets were downloaded from the official frida/frida GitHub release during CI."
           fi
 
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/frida-magisk-*.zip dist/frida-magisk-*.zip.sha256 --clobber
+            gh release upload "$tag" dist/frida-magisk-[0-9]*.zip dist/frida-magisk-[0-9]*.zip.sha256 --clobber
           else
-            gh release create "$tag" dist/frida-magisk-*.zip dist/frida-magisk-*.zip.sha256 \
+            gh release create "$tag" dist/frida-magisk-[0-9]*.zip dist/frida-magisk-[0-9]*.zip.sha256 \
               --target "$GITHUB_SHA" \
               --title "$tag" \
               --notes "$notes"

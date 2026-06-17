@@ -11,9 +11,26 @@
 
 namespace {
 
-constexpr char kTag[] = "FridaMagiskZygisk";
-constexpr char kModuleFallback[] = "/data/adb/modules/frida_magisk";
-constexpr char kRuntimeBase[] = "/data/local/tmp/frida_magisk";
+#ifndef ZYGISK_LOG_TAG
+#define ZYGISK_LOG_TAG "FridaMagiskZygisk"
+#endif
+#ifndef ZYGISK_MODULE_FALLBACK
+#define ZYGISK_MODULE_FALLBACK "/data/adb/modules/frida_magisk"
+#endif
+#ifndef ZYGISK_RUNTIME_FALLBACK
+#define ZYGISK_RUNTIME_FALLBACK "/data/local/tmp/frida_magisk"
+#endif
+#ifndef ZYGISK_GADGET_FALLBACK
+#define ZYGISK_GADGET_FALLBACK "libfrida-gadget.so"
+#endif
+#ifndef ZYGISK_MODULE_CLASS
+#define ZYGISK_MODULE_CLASS FridaToolboxInjector
+#endif
+
+constexpr char kTag[] = ZYGISK_LOG_TAG;
+constexpr char kModuleFallback[] = ZYGISK_MODULE_FALLBACK;
+constexpr char kRuntimeBase[] = ZYGISK_RUNTIME_FALLBACK;
+constexpr char kGadgetBasename[] = ZYGISK_GADGET_FALLBACK;
 
 #if defined(__aarch64__)
 constexpr char kAbi[] = "arm64-v8a";
@@ -96,7 +113,7 @@ bool file_exists_at(int dir_fd, const char *relative_path) {
   return true;
 }
 
-class FridaToolboxInjector : public zygisk::ModuleBase {
+class ZYGISK_MODULE_CLASS : public zygisk::ModuleBase {
 public:
   void onLoad(zygisk::Api *api, JNIEnv *env) override {
     api_ = api;
@@ -125,9 +142,15 @@ public:
     char mode[32] = "hybrid";
     char target[256] = "";
     char include_children[8] = "no";
+    char runtime_base[512] = "";
+    char gadget_basename[128] = "";
     read_config_value(module_fd, "FRIDA_MODE", mode, sizeof(mode));
     read_config_value(module_fd, "GADGET_TARGET_PACKAGE", target, sizeof(target));
     read_config_value(module_fd, "GADGET_INCLUDE_CHILDREN", include_children, sizeof(include_children));
+    read_config_value(module_fd, "FRIDA_RUNTIME_DIR", runtime_base, sizeof(runtime_base));
+    read_config_value(module_fd, "GADGET_BASENAME", gadget_basename, sizeof(gadget_basename));
+    if (runtime_base[0] == '\0') copy_string(runtime_base, sizeof(runtime_base), kRuntimeBase);
+    if (gadget_basename[0] == '\0') copy_string(gadget_basename, sizeof(gadget_basename), kGadgetBasename);
 
     const bool should_inject = mode_allows_gadget(mode) &&
                                process_matches_target(process, target, include_children);
@@ -144,9 +167,9 @@ public:
     }
 
     char relative_gadget[256];
-    std::snprintf(relative_gadget, sizeof(relative_gadget), "gadget/%s/libfrida-gadget.so", kAbi);
+    std::snprintf(relative_gadget, sizeof(relative_gadget), "gadget/%s/%s", kAbi, gadget_basename);
     if (!file_exists_at(module_fd, relative_gadget)) {
-      LOGW("missing gadget for abi=%s process=%s target=%s", kAbi, process, target);
+      LOGW("missing payload for abi=%s process=%s target=%s", kAbi, process, target);
       close(module_fd);
       env_->ReleaseStringUTFChars(args->nice_name, process);
       return;
@@ -154,7 +177,7 @@ public:
 
     should_inject_ = true;
     copy_string(process_, sizeof(process_), process);
-    std::snprintf(gadget_path_, sizeof(gadget_path_), "%s/%s", kRuntimeBase, relative_gadget);
+    std::snprintf(gadget_path_, sizeof(gadget_path_), "%s/%s", runtime_base, relative_gadget);
 
     close(module_fd);
     env_->ReleaseStringUTFChars(args->nice_name, process);
@@ -168,7 +191,7 @@ public:
     if (handle == nullptr) {
       LOGW("dlopen failed abi=%s process=%s path=%s error=%s", kAbi, process_, gadget_path_, dlerror());
     } else {
-      LOGI("loaded gadget abi=%s process=%s path=%s handle=%p", kAbi, process_, gadget_path_, handle);
+      LOGI("loaded payload abi=%s process=%s path=%s handle=%p", kAbi, process_, gadget_path_, handle);
     }
   }
 
@@ -182,4 +205,4 @@ private:
 
 }  // namespace
 
-REGISTER_ZYGISK_MODULE(FridaToolboxInjector)
+REGISTER_ZYGISK_MODULE(ZYGISK_MODULE_CLASS)
