@@ -61,6 +61,12 @@ surfaces can override any value through `ANTIDETECT_PROFILE_FILE`, the
 explicit environment variables. Public placeholder values are rejected by the
 build and verification scripts.
 
+If no owned server/Gadget asset archive is configured, the CI workflow downloads
+official Frida assets as a baseline input and still applies the antidetect
+module/Zygisk profile. This validates the automation path, but the server and
+Gadget binary internals are only as stealthy as the asset archive supplied to
+the workflow.
+
 `ANTIDETECT_PROFILE_NAME` is optional and defaults to `tamaya`. When no
 overrides are provided, the build derives module identity, filenames, runtime
 paths, listen ports, and native Zygisk surfaces from that profile.

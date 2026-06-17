@@ -39,6 +39,11 @@ overrides, but those inputs are not as private as secrets.
 profile derives paths, ports, module IDs, file names, and native names from this
 value unless a specific `ANTIDETECT_*` override is set.
 
+When no owned server/Gadget archive is configured in CI, the workflow downloads
+official Frida assets as baseline input and applies the antidetect module/Zygisk
+profile. Treat that as an automation smoke path, not proof that server/Gadget
+binary internals are stealth hardened.
+
 Default-derived profile keys:
 
 - `ANTIDETECT_MODULE_ID`

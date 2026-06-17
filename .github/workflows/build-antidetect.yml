@@ -126,8 +126,13 @@ jobs:
               --pattern "$archive_name.sha256" \
               --dir "$PWD/build/antidetect-assets" || true
             export ANTIDETECT_ASSET_ARCHIVE="$PWD/build/antidetect-assets/$archive_name"
+            bash scripts/prepare-antidetect-assets.sh
+          else
+            echo "No owned antidetect asset archive configured; using official Frida assets as baseline input."
+            echo "FRIDA_ALLOW_UNVERIFIED=1" >> "$GITHUB_ENV"
+            export FRIDA_ALLOW_UNVERIFIED=1
+            scripts/fetch-frida-assets.sh
           fi
-          bash scripts/prepare-antidetect-assets.sh
           scripts/build-zygisk-injector.sh
           for abi in ${MODULE_ABIS:-universal arm64-v8a armeabi-v7a x86 x86_64}; do
             MODULE_ABI="$abi" scripts/build-module.sh
