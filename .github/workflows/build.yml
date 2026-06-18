@@ -90,7 +90,7 @@ jobs:
 
       - name: Set up Android SDK
         if: steps.release_state.outputs.skip_build != 'true'
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4.0.1
 
       - name: Install Android NDK
         if: steps.release_state.outputs.skip_build != 'true'
