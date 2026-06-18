@@ -116,6 +116,7 @@ jobs:
           export FRIDA_ASSET_DIR="$PWD/assets/antidetect"
           asset_release_tag="${INPUT_ASSET_RELEASE_TAG:-$CONFIGURED_ASSET_RELEASE_TAG}"
           if [[ -n "$asset_release_tag" ]]; then
+            echo "ANTIDETECT_ASSET_SOURCE=owned" >> "$GITHUB_ENV"
             archive_pattern="${INPUT_ASSET_ARCHIVE_NAME:-${CONFIGURED_ASSET_ARCHIVE_NAME:-frida-antidetect-assets-{version}.tar.xz}}"
             archive_name="${archive_pattern//\{version\}/$ANTIDETECT_VERSION}"
             mkdir -p "$PWD/build/antidetect-assets"
@@ -128,6 +129,7 @@ jobs:
             export ANTIDETECT_ASSET_ARCHIVE="$PWD/build/antidetect-assets/$archive_name"
             bash scripts/prepare-antidetect-assets.sh
           else
+            echo "ANTIDETECT_ASSET_SOURCE=official-baseline" >> "$GITHUB_ENV"
             echo "No owned antidetect asset archive configured; using official Frida assets as baseline input."
             echo "FRIDA_ALLOW_UNVERIFIED=1" >> "$GITHUB_ENV"
             export FRIDA_ALLOW_UNVERIFIED=1
@@ -158,12 +160,20 @@ jobs:
         shell: bash
         run: |
           tag="$RELEASE_TAG"
-          notes="Automated frida-magisk antidetect build for asset version $FRIDA_VERSION."$'\n\n'"Assets use this repository's owned antidetect server and Gadget build outputs, plus this repository's Zygisk injector and module template."$'\n\n'"This build reduces common static Frida surfaces but is not a guarantee against target-specific anti-tamper checks."
+          notes="Automated frida-magisk antidetect build for asset version $FRIDA_VERSION."
+          if [[ "${ANTIDETECT_ASSET_SOURCE:-}" == "owned" ]]; then
+            notes="$notes"$'\n\n'"Assets use this repository's owned antidetect server and Gadget build outputs, plus this repository's Zygisk injector and module template."
+          else
+            notes="$notes"$'\n\n'"No owned antidetect asset archive was configured for this run. The package uses official Frida server and Gadget assets as baseline inputs, then applies this repository's module, Zygisk, path, port, and filename profile."
+            notes="$notes"$'\n\n'"This baseline validates the automated packaging chain and static package surface rewrite. It does not make server or Gadget binary internals target-hardened; binary-level behavior still requires supplying owned antidetect assets."
+          fi
+          notes="$notes"$'\n\n'"This build reduces common static Frida surfaces but is not a guarantee against target-specific anti-tamper checks."
           if [[ -n "${ANTIDETECT_ALLOW_UNVERIFIED:-}" ]]; then
             notes="$notes"$'\n\n'"Note: antidetect assets were downloaded without SHA-256 verification."
           fi
 
           if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$tag" --notes "$notes"
             gh release upload "$tag" dist/frida-magisk-antidetect-*.zip dist/frida-magisk-antidetect-*.zip.sha256 --clobber
           else
             gh release create "$tag" dist/frida-magisk-antidetect-*.zip dist/frida-magisk-antidetect-*.zip.sha256 \
