@@ -173,7 +173,10 @@ jobs:
           fi
 
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$tag" --notes "$notes"
+            gh release edit "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --notes "$notes"
             gh release upload "$tag" dist/frida-magisk-antidetect-*.zip dist/frida-magisk-antidetect-*.zip.sha256 --clobber
           else
             gh release create "$tag" dist/frida-magisk-antidetect-*.zip dist/frida-magisk-antidetect-*.zip.sha256 \
