@@ -61,7 +61,8 @@ pid_cmdline() {
 }
 
 is_frida_pid() {
-  is_alive "$1" && pid_cmdline "$1" | grep -q "$FRIDA_SERVER_BASENAME"
+  # -F: the basename may contain dots (profiled names); treat it literally.
+  is_alive "$1" && pid_cmdline "$1" | grep -qF -- "$FRIDA_SERVER_BASENAME"
 }
 
 find_frida_pid() {
@@ -174,7 +175,13 @@ daemon_loop() {
     exit 0
   fi
   ensure_rundir
+  # Two quick starts used to both pass the watchdog_alive check above and end
+  # up running two competing daemon loops. Both write their pid and then the
+  # loser verifies it still owns the pidfile and exits; portable across
+  # mksh/toybox (no noclobber support required).
   echo "$$" > "$WATCHDOG_PIDFILE"
+  sleep 1
+  [ "$(read_file "$WATCHDOG_PIDFILE")" = "$$" ] || exit 0
   stage_gadget_runtime
 
   while true; do
@@ -620,7 +627,7 @@ print_packages() {
   [ "$limit" -gt 0 ] 2>/dev/null || limit=100
 
   pm list packages 2>/dev/null | sed 's/^package://' | while IFS= read -r package; do
-    if [ -n "$query" ] && ! echo "$package" | grep -qi -- "$query"; then
+    if [ -n "$query" ] && ! echo "$package" | grep -qiF -- "$query"; then
       continue
     fi
     echo "PACKAGE=$package"
