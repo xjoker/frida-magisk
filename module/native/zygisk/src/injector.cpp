@@ -1,10 +1,13 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <jni.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <cstdio>
 #include <cstring>
+
+#include <linux/memfd.h>
 
 #include "zygisk.hpp"
 
@@ -130,6 +133,51 @@ bool file_exists_at(int dir_fd, const char *relative_path) {
   return true;
 }
 
+// Copy the staged Gadget into an anonymous memfd and dlopen it through
+// /proc/self/fd/N so the filesystem path never appears in the target
+// process maps. Returns nullptr on any failure so the caller can fall
+// back to a direct dlopen of the staged path.
+void *load_gadget_via_memfd(const char *path, const char *name) {
+  int src = open(path, O_RDONLY | O_CLOEXEC);
+  if (src < 0) return nullptr;
+
+  int mfd = static_cast<int>(syscall(SYS_memfd_create, name, MFD_CLOEXEC));
+  if (mfd < 0) {
+    close(src);
+    return nullptr;
+  }
+
+  char buffer[65536];
+  ssize_t len;
+  bool ok = true;
+  while ((len = read(src, buffer, sizeof(buffer))) > 0) {
+    char *cursor = buffer;
+    ssize_t remaining = len;
+    while (remaining > 0) {
+      ssize_t written = write(mfd, cursor, remaining);
+      if (written <= 0) {
+        ok = false;
+        break;
+      }
+      cursor += written;
+      remaining -= written;
+    }
+    if (!ok) break;
+  }
+  if (len < 0) ok = false;
+  close(src);
+  if (!ok || lseek(mfd, 0, SEEK_SET) < 0) {
+    close(mfd);
+    return nullptr;
+  }
+
+  char fd_path[64];
+  std::snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", mfd);
+  void *handle = dlopen(fd_path, RTLD_NOW | RTLD_GLOBAL);
+  close(mfd);
+  return handle;
+}
+
 class ZYGISK_MODULE_CLASS : public zygisk::ModuleBase {
 public:
   void onLoad(zygisk::Api *api, JNIEnv *env) override {
@@ -194,6 +242,7 @@ public:
 
     should_inject_ = true;
     copy_string(process_, sizeof(process_), process);
+    copy_string(gadget_name_, sizeof(gadget_name_), gadget_basename);
     std::snprintf(gadget_path_, sizeof(gadget_path_), "%s/%s", runtime_base, relative_gadget);
 
     close(module_fd);
@@ -204,7 +253,13 @@ public:
     (void)args;
     if (!should_inject_) return;
 
-    void *handle = dlopen(gadget_path_, RTLD_NOW | RTLD_GLOBAL);
+    // memfd first so the staged path stays out of the app's own /proc maps;
+    // fall back to the staged path on kernels or SELinux policies where the
+    // memfd path is not usable.
+    void *handle = load_gadget_via_memfd(gadget_path_, gadget_name_);
+    if (handle == nullptr) {
+      handle = dlopen(gadget_path_, RTLD_NOW | RTLD_GLOBAL);
+    }
 #if ZYGISK_QUIET
     (void)handle;
 #else
@@ -222,6 +277,7 @@ private:
   bool should_inject_ = false;
   char process_[256] = "";
   char gadget_path_[768] = "";
+  char gadget_name_[128] = "";
 };
 
 }  // namespace
