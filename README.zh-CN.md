@@ -53,7 +53,7 @@ scripts/build-module.sh
 指定 Frida 版本：
 
 ```bash
-FRIDA_VERSION=17.9.1 scripts/build-all.sh
+FRIDA_VERSION=17.23.3 scripts/build-all.sh
 ```
 
 `scripts/build-all.sh` 默认构建 universal 包和所有 per-ABI 包。只构建指定包类型：
@@ -95,13 +95,14 @@ dist/*.sha256
 - 推送到 `main` 或 `master`：构建并上传 workflow artifact。
 - 推送 `v*` tag：从 tag 解析版本，构建后创建或更新对应 GitHub Release。
 - `pull_request`：只构建，不发布。
+- 每次 push 和 pull request 都会额外跑 `checks` job：shell 语法检查、`actionlint` 检查 workflow，以及 `scripts/test-config-upgrade.sh`。
 - `workflow_dispatch` 手动触发：支持 `frida_version`、`publish_release`（只在默认分支上允许发布）。
 - `schedule` 每日触发：每天 `00:00 UTC` 检查 Frida 官方最新 release，仅在本仓库没有 `v<最新版本>` release 时构建并发布；已存在时仍做一次只构建不发布的检查，以便尽早发现工具链问题。
 
 手动构建示例：
 
 ```bash
-gh workflow run build.yml -f frida_version=17.9.1 -f publish_release=false
+gh workflow run build.yml -f frida_version=17.23.3 -f publish_release=false
 gh workflow run build.yml -f frida_version=latest -f publish_release=true
 ```
 
@@ -117,6 +118,7 @@ Release 规则：
 - 官方模块的 `module.prop` 把 `updateJson` 指向 `main` 上的 `update/official.json`，Magisk / KernelSU 可以在应用内提示更新。下载的是 `universal` ZIP。
 - 发布成功后，publish job 会更新 `update/official.json` 和 `update/official-changelog.md`，并推送到默认分支。这一步只在 `xjoker/frida-magisk` 上运行，PR、fork 和其它分支都不会触发。版本号不会被改小。
 - antidetect 版本会去掉 `updateJson`，因为公开的 URL 会让改名失去意义。`scripts/verify-antidetect-package.sh` 会检查它已去掉。
+- 该 URL 固定指向 `xjoker/frida-magisk`，所以 fork 构建出的官方包仍然从上游 release 收到更新。
 - 自有 antidetect 资产包按仓库内的 `antidetect/hashes.sha256` 校验，见 `antidetect/README.md`。
 - 定时任务：每天检查并发布新的 Frida 版本；每周一在 release 已存在时额外跑一次只构建、不发布的检查。
 
@@ -136,7 +138,7 @@ adb -s <serial> shell su -c id
 通过 KernelSU / SukiSU 安装：
 
 ```bash
-adb -s <serial> push dist/frida-magisk-17.9.1-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
+adb -s <serial> push dist/frida-magisk-17.23.3-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
 adb -s <serial> shell su -c '/data/adb/ksud module install /data/local/tmp/frida-magisk.zip'
 adb -s <serial> reboot
 ```
@@ -144,7 +146,7 @@ adb -s <serial> reboot
 通过 Magisk CLI 安装：
 
 ```bash
-adb -s <serial> push dist/frida-magisk-17.9.1-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
+adb -s <serial> push dist/frida-magisk-17.23.3-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
 adb -s <serial> shell su -c 'magisk --install-module /data/local/tmp/frida-magisk.zip'
 adb -s <serial> reboot
 ```

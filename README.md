@@ -53,7 +53,7 @@ scripts/build-module.sh
 Build a specific Frida version:
 
 ```bash
-FRIDA_VERSION=17.9.1 scripts/build-all.sh
+FRIDA_VERSION=17.23.3 scripts/build-all.sh
 ```
 
 `scripts/build-all.sh` builds the universal package and all per-ABI packages by default. To build only selected package targets:
@@ -95,13 +95,14 @@ Supported triggers:
 - `push` to `main` or `master`: builds and uploads workflow artifacts.
 - `push` tag `v*`: builds the version from the tag, then creates or updates the matching GitHub Release.
 - `pull_request`: build only, never publishes.
+- Every push and pull request also runs a `checks` job: shell syntax, `actionlint` on the workflows, and `scripts/test-config-upgrade.sh`.
 - `workflow_dispatch`: accepts `frida_version` and `publish_release` (publishing is only honoured on the default branch).
 - `schedule`: runs daily at `00:00 UTC`, checks the latest upstream Frida release, and creates a release only when this repository does not already have `v<latest-version>`; otherwise it still runs a build-only check so toolchain breakage is visible.
 
 Manual build examples:
 
 ```bash
-gh workflow run build.yml -f frida_version=17.9.1 -f publish_release=false
+gh workflow run build.yml -f frida_version=17.23.3 -f publish_release=false
 gh workflow run build.yml -f frida_version=latest -f publish_release=true
 ```
 
@@ -117,6 +118,7 @@ Release rule:
 - The official module's `module.prop` sets `updateJson` to `update/official.json` on `main`, so Magisk / KernelSU can offer in-app updates. The update points at the `universal` ZIP.
 - After a successful release, the publish job (only on `xjoker/frida-magisk`, never on PRs, forks or other branches) updates `update/official.json` and `update/official-changelog.md` and pushes the change to the default branch. It never moves to a lower version.
 - The antidetect flavor removes `updateJson`, because a public URL would undo its renaming. `scripts/verify-antidetect-package.sh` checks that it is gone.
+- The URL always points at `xjoker/frida-magisk`, so an official package built from a fork still receives updates from the upstream releases.
 - Owned antidetect asset archives are verified against `antidetect/hashes.sha256` in this repository. See `antidetect/README.md`.
 - Schedule: the daily run publishes new Frida versions. The Monday run also does a build-only check when the latest release already exists.
 
@@ -136,7 +138,7 @@ adb -s <serial> shell su -c id
 Install with KernelSU / SukiSU:
 
 ```bash
-adb -s <serial> push dist/frida-magisk-17.9.1-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
+adb -s <serial> push dist/frida-magisk-17.23.3-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
 adb -s <serial> shell su -c '/data/adb/ksud module install /data/local/tmp/frida-magisk.zip'
 adb -s <serial> reboot
 ```
@@ -144,7 +146,7 @@ adb -s <serial> reboot
 Install with Magisk CLI when available:
 
 ```bash
-adb -s <serial> push dist/frida-magisk-17.9.1-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
+adb -s <serial> push dist/frida-magisk-17.23.3-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
 adb -s <serial> shell su -c 'magisk --install-module /data/local/tmp/frida-magisk.zip'
 adb -s <serial> reboot
 ```

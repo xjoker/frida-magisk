@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${FRIDA_ASSET_DIR:-$ROOT/assets/frida}"
-VERSION="${FRIDA_VERSION:-17.9.1}"
+VERSION="${FRIDA_VERSION:-17.23.3}"
 BASE_URL="https://github.com/frida/frida/releases/download/$VERSION"
 
 sha256_file() {
@@ -27,6 +27,14 @@ sha256_for() {
     frida-gadget-17.9.1-android-arm64.so.xz) echo "6ebc1cb0eb5fa539bb8084e8683530084788781fd201291a965c886718f0af1f" ;;
     frida-gadget-17.9.1-android-x86.so.xz) echo "49509f6866026869b78acb071493854a9b5c8bce022043a24c7a21a962682e43" ;;
     frida-gadget-17.9.1-android-x86_64.so.xz) echo "9bbc68bb28bd34d1b98a2a75bb403660f8d367f8649d17aa54ca1c3e08cf9195" ;;
+    frida-server-17.23.3-android-arm.xz) echo "9d0aac3654d0fa0086c77ae3da9e66548f8f827ab4c20d94ac529de19a2ba44a" ;;
+    frida-server-17.23.3-android-arm64.xz) echo "f61e98db10dc1692be1cfe209e4ec32f5381759c722ab1a3f79db36730e6234e" ;;
+    frida-server-17.23.3-android-x86.xz) echo "7825046c19fa6e505eb19df57f4903a127011cbaa9f65fc85cf8ef9d99754968" ;;
+    frida-server-17.23.3-android-x86_64.xz) echo "5413e802fc2edbbd7f933352542e517d8ecd55aacd5f403fe51d8170bfeaa9b6" ;;
+    frida-gadget-17.23.3-android-arm.so.xz) echo "f01ce2f982a34d95c7f9a44ba787b6577d844bc14015da6e41289dbf80af2d23" ;;
+    frida-gadget-17.23.3-android-arm64.so.xz) echo "aeb3109844d69f5745438597667841a9141e8701a174341999e1479a4c97925f" ;;
+    frida-gadget-17.23.3-android-x86.so.xz) echo "b9646fdb044f55ccf30bb13828ed2effd17c25bdec88c4c3041b45955319beff" ;;
+    frida-gadget-17.23.3-android-x86_64.so.xz) echo "31c0210da61880ed7c4cb614e0e118b9d83e7a27768bdd393ffaa9520e7d20bb" ;;
     *) return 1 ;;
   esac
 }
@@ -36,6 +44,7 @@ release_digests=""
 # Resolve the expected SHA-256 from the GitHub releases API `digest` field
 # (computed by GitHub at upload time). Used for every version that is not
 # pinned locally above. There is no unverified fallback.
+#
 # Runs in the calling shell so `release_digests` is fetched once per run, not
 # once per asset. A command substitution would isolate it in a subshell.
 load_release_digests() {

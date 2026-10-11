@@ -9,7 +9,7 @@ on:
       antidetect_version:
         description: Antidetect asset version to package
         required: true
-        default: 17.9.1
+        default: 17.23.3
       asset_release_tag:
         description: Optional release tag in this repository containing owned antidetect assets
         required: false
