@@ -1,6 +1,8 @@
 const MODULE_DIR = "/data/adb/modules/frida_magisk";
 const ACTION = `sh ${MODULE_DIR}/action.sh`;
 const AUTO_REFRESH_MS = 3000;
+const EXEC_TIMEOUT_MS = 20000;
+const QUIET_FAILURE_LIMIT = 3;
 const MAX_PACKAGE_OPTIONS = 500;
 const LANGUAGE_KEY = "frida-magisk-language";
 const DEFAULT_LANGUAGE = "en";
@@ -78,6 +80,7 @@ const translations = {
     noMessage: "None",
     gadgetMissingFeedback: "Current ABI is missing the bundled Gadget backend. Settings will be saved, but early injection will not take effect.",
     commandFailed: "Command failed: {code}",
+    commandTimeout: "Command timed out. The WebUI bridge did not answer; try refreshing.",
     refreshReading: "Reading service status...",
     refreshDone: "Status refreshed",
     readFailed: "Read failed",
@@ -167,6 +170,7 @@ const translations = {
     noMessage: "无",
     gadgetMissingFeedback: "当前 ABI 缺少内置 Gadget 后端：配置会保存，但早期注入不会生效。",
     commandFailed: "命令失败: {code}",
+    commandTimeout: "命令执行超时，WebUI 桥接无响应，请尝试刷新。",
     refreshReading: "正在读取服务状态...",
     refreshDone: "状态已刷新",
     readFailed: "读取失败",
@@ -189,6 +193,8 @@ const translations = {
 let language = loadLanguage();
 let currentStatus = {};
 let refreshInFlight = false;
+let refreshPromise = null;
+let quietFailures = 0;
 let actionInFlight = false;
 let packageList = [];
 
@@ -318,13 +324,29 @@ function exec(command) {
   if (window.ksu?.exec) {
     return new Promise((resolve, reject) => {
       const callback = `frida_magisk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      let settled = false;
+      // Some bridge versions never invoke the callback when the shell layer
+      // dies. Without this timer the pending promise keeps refreshInFlight
+      // pinned and the whole panel locks up until the page is reopened.
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        delete window[callback];
+        reject(new Error(t("commandTimeout")));
+      }, EXEC_TIMEOUT_MS);
       window[callback] = (errno, stdout, stderr) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         delete window[callback];
         errno === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr || t("commandFailed", { code: errno })));
       };
       try {
         window.ksu.exec(command, "{}", callback);
       } catch (error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         delete window[callback];
         reject(error);
       }
@@ -340,8 +362,8 @@ function exec(command) {
       "WATCHDOG=running",
       "WATCHDOG_INTERVAL=5",
       "MANUAL_STOP=no",
-      "VERSION=17.9.1",
-      "VERSION_CODE=170901",
+      "VERSION=17.23.3",
+      "VERSION_CODE=170233",
       "RESTARTS=0",
       `MESSAGE=${t("localPreview")}`,
       "UPDATED_TEXT=2026-06-10 16:12:00",
@@ -441,7 +463,10 @@ function render(status) {
     button.classList.toggle("active", button.dataset.mode === mode);
   }
   if (mode !== "server" && !gadgetReady) {
-    elements.feedback.textContent = t("gadgetMissingFeedback");
+    const hint = t("gadgetMissingFeedback");
+    if (elements.feedback.textContent !== hint) {
+      elements.feedback.textContent = hint;
+    }
   }
 }
 
@@ -485,29 +510,53 @@ async function refreshStatus(feedback = "", options = {}) {
   if (quiet && (refreshInFlight || actionInFlight)) {
     return;
   }
+  if (!quiet && refreshPromise) {
+    // Queue behind the in-flight refresh so two web-status reads never race
+    // and a stale result cannot overwrite a newer one.
+    try {
+      await refreshPromise;
+    } catch (_) {
+      // Already reported by the refresh that owned it.
+    }
+  }
   refreshInFlight = true;
   if (!quiet) {
     setBusy(true);
     elements.feedback.textContent = feedback || t("refreshReading");
   }
-  try {
-    const result = await exec(`${ACTION} web-status`);
-    render(parseKeyValues(result.stdout));
-    if (!quiet) {
-      elements.feedback.textContent = feedback || t("refreshDone");
+  const running = (async () => {
+    try {
+      const result = await exec(`${ACTION} web-status`);
+      quietFailures = 0;
+      render(parseKeyValues(result.stdout));
+      if (!quiet) {
+        elements.feedback.textContent = feedback || t("refreshDone");
+      }
+    } catch (error) {
+      if (!quiet) {
+        elements.healthBadge.textContent = t("readFailed");
+        elements.healthBadge.className = "badge error";
+        elements.feedback.textContent = String(error.message || error);
+      } else {
+        quietFailures += 1;
+        // Silent failures would leave a stale "running" status on screen with
+        // no hint; surface the error once the failures repeat.
+        if (quietFailures >= QUIET_FAILURE_LIMIT) {
+          elements.healthBadge.textContent = t("readFailed");
+          elements.healthBadge.className = "badge error";
+          elements.feedback.textContent = String(error.message || error);
+        }
+      }
+    } finally {
+      refreshInFlight = false;
+      refreshPromise = null;
+      if (!quiet) {
+        setBusy(false);
+      }
     }
-  } catch (error) {
-    if (!quiet) {
-      elements.healthBadge.textContent = t("readFailed");
-      elements.healthBadge.className = "badge error";
-      elements.feedback.textContent = String(error.message || error);
-    }
-  } finally {
-    refreshInFlight = false;
-    if (!quiet) {
-      setBusy(false);
-    }
-  }
+  })();
+  refreshPromise = running;
+  return running;
 }
 
 async function runAction(action, label) {
@@ -570,7 +619,7 @@ async function loadPackages() {
   setBusy(true);
   elements.feedback.textContent = t("loadingPackages");
   try {
-    const result = await exec(`${ACTION} packages`);
+    const result = await exec(`${ACTION} packages "" ${MAX_PACKAGE_OPTIONS}`);
     packageList = parsePackages(result.stdout);
     renderPackageOptions(packageList);
     elements.feedback.textContent = t("packagesLoaded", { count: packageList.length });
