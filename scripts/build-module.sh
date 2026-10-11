@@ -470,6 +470,7 @@ if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
     -e "s|^id=.*|id=$MODULE_ID|" \
     -e "s|^name=.*|name=$MODULE_NAME|" \
     -e "s|^description=.*|description=$MODULE_DESCRIPTION|" \
+    -e "/^updateJson=/d" \
     "$tmp/module.prop"
   rm -f "$tmp/module.prop.bak"
 

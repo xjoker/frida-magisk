@@ -1,0 +1,4 @@
+# Trusted SHA-256 hashes for owned antidetect asset archives (sha256sum format).
+# One line per archive: <sha256>  <archive file name>
+# CI verifies the archive downloaded from the asset release against this file and
+# fails closed if the entry is missing or does not match. See antidetect/README.md.

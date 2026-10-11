@@ -348,6 +348,13 @@ stage_gadget_runtime() {
 
 write_config() {
   local tmp="$CONFIG.tmp.$$"
+  # Persist package flavor so module upgrades can tell official vs antidetect
+  # apart and keep user listen/mode/gadget settings (see customize.sh).
+  if [ -z "${FRIDA_MAGISK_PACKAGE_FLAVOR:-}" ] && [ -f "$MODDIR/package.env" ]; then
+    # shellcheck disable=SC1090
+    . "$MODDIR/package.env"
+  fi
+  FRIDA_MAGISK_PACKAGE_FLAVOR=${FRIDA_MAGISK_PACKAGE_FLAVOR:-official}
   {
     echo "# Frida Magisk runtime config."
     echo "FRIDA_MODE=$FRIDA_MODE"
@@ -363,6 +370,7 @@ write_config() {
     echo "GADGET_ON_LOAD=$GADGET_ON_LOAD"
     echo "GADGET_RUNTIME=$GADGET_RUNTIME"
     echo "GADGET_INCLUDE_CHILDREN=$GADGET_INCLUDE_CHILDREN"
+    echo "FRIDA_MAGISK_PACKAGE_FLAVOR=$FRIDA_MAGISK_PACKAGE_FLAVOR"
   } > "$tmp"
   mv "$tmp" "$CONFIG"
   chmod 0644 "$CONFIG"

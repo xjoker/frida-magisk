@@ -31,33 +31,69 @@ sha256_for() {
   esac
 }
 
+release_digests=""
+
+# Resolve the expected SHA-256 from the GitHub releases API `digest` field
+# (computed by GitHub at upload time). Used for every version that is not
+# pinned locally above. There is no unverified fallback.
+sha256_from_release_api() {
+  local name="$1"
+  if [[ -z "$release_digests" ]]; then
+    local api="https://api.github.com/repos/frida/frida/releases/tags/$VERSION"
+    local auth=()
+    if [[ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]]; then
+      auth=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}")
+    fi
+    release_digests="$(curl -fsSL --retry 3 \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "${auth[@]}" "$api" \
+      | python3 -c 'import json, sys
+for a in json.load(sys.stdin).get("assets", []):
+    d = a.get("digest") or ""
+    if d.startswith("sha256:"):
+        print(a["name"], d[len("sha256:"):])')" || {
+      echo "Failed to query $api for asset digests." >&2
+      return 1
+    }
+  fi
+  awk -v n="$name" '$1 == n { print $2; found = 1 } END { exit !found }' <<<"$release_digests"
+}
+
 download_one() {
   local name="$1"
   local archive="$OUT/$name"
-  local expected=""
-  expected="$(sha256_for "$name" 2>/dev/null || true)"
+  local expected="" actual=""
+  if ! expected="$(sha256_for "$name")"; then
+    if ! expected="$(sha256_from_release_api "$name")" || [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "No SHA-256 available for $name (not pinned locally and no digest from the GitHub releases API)." >&2
+      exit 1
+    fi
+  fi
 
   mkdir -p "$OUT"
   if [[ ! -f "$archive" ]]; then
-    curl -L --fail --show-error --output "$archive" "$BASE_URL/$name"
+    curl -L --fail --show-error --retry 3 --output "$archive.part" "$BASE_URL/$name"
+    mv "$archive.part" "$archive"
   fi
 
-  if [[ -n "$expected" ]]; then
-    actual="$(sha256_file "$archive")"
-    if [[ "$actual" != "$expected" ]]; then
-      echo "SHA-256 mismatch for $name: expected $expected got $actual" >&2
-      exit 1
-    fi
-  elif [[ "${FRIDA_ALLOW_UNVERIFIED:-}" != "1" ]]; then
-    echo "No pinned SHA-256 for $name." >&2
-    echo "Set FRIDA_ALLOW_UNVERIFIED=1 to download this Frida version without local checksum pinning." >&2
+  actual="$(sha256_file "$archive")"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "SHA-256 mismatch for $name: expected $expected got $actual" >&2
+    rm -f "$archive"
     exit 1
   fi
+  echo "Verified $name sha256=$actual" >&2
 
   xz -dkf "$archive"
   chmod 0755 "${archive%.xz}"
   echo "${archive%.xz}"
 }
+
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Unsupported FRIDA_VERSION=$VERSION (expected X.Y.Z)." >&2
+  exit 1
+fi
 
 for arch in arm arm64 x86 x86_64; do
   download_one "frida-server-$VERSION-android-$arch.xz"

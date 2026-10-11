@@ -28,6 +28,7 @@
 scripts/fetch-frida-assets.sh
 scripts/build-zygisk-injector.sh
 scripts/build-module.sh
+scripts/test-config-upgrade.sh
 ```
 
 安装或刷入前必须确认目标设备：

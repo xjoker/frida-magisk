@@ -7,107 +7,164 @@ on:
       - master
     tags:
       - v*
+  pull_request:
   schedule:
+    # Daily: detect a new upstream Frida release and publish it.
     - cron: "0 0 * * *"
+    # Weekly (Monday): if the latest release already exists, still run a build-only
+    # check so toolchain breakage (e.g. Android SDK changes) surfaces within a week.
+    - cron: "30 0 * * 1"
   workflow_dispatch:
     inputs:
       frida_version:
         description: Frida release version to package, or "latest"
         required: true
         default: latest
-      allow_unverified:
-        description: Allow Frida versions without pinned local SHA-256
-        required: true
-        type: boolean
-        default: true
       publish_release:
-        description: Publish or update GitHub Release v<frida_version>
+        description: Publish or update GitHub Release v<frida_version> (only honoured on the default branch)
         required: true
         type: boolean
         default: false
 
+# Least privilege by default; only the publish job gets contents: write.
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     if: github.ref_type != 'tag' || !endsWith(github.ref_name, '-antidetect')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      frida_version: ${{ steps.version.outputs.frida_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      publish: ${{ steps.release_state.outputs.publish }}
+      build: ${{ steps.release_state.outputs.build }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Resolve Frida version
+        id: version
+        env:
+          INPUT_FRIDA_VERSION: ${{ inputs.frida_version }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          resolve_latest() {
-            curl -fsSL \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/frida/frida/releases/latest" \
-              | python3 -c 'import json, sys; print(json.load(sys.stdin)["tag_name"])'
-          }
-
-          version="${{ inputs.frida_version }}"
+          set -euo pipefail
+          version="${INPUT_FRIDA_VERSION:-}"
           if [[ -z "$version" && "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
             version="${GITHUB_REF_NAME#v}"
           fi
           if [[ -z "$version" || "$version" == "latest" ]]; then
-            version="$(resolve_latest)"
+            version="$(gh api repos/frida/frida/releases/latest --jq .tag_name)"
           fi
           version="${version#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unsupported Frida version: $version" >&2
+            exit 1
+          fi
 
           echo "FRIDA_VERSION=$version" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
-
-          if [[ "${{ inputs.allow_unverified }}" == "true" || "$GITHUB_EVENT_NAME" == "schedule" || "$GITHUB_REF_TYPE" == "tag" || "$version" != "17.9.1" ]]; then
-            echo "FRIDA_ALLOW_UNVERIFIED=1" >> "$GITHUB_ENV"
-          fi
+          echo "frida_version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v$version" >> "$GITHUB_OUTPUT"
           echo "Using Frida $version"
 
-      - name: Check scheduled release state
+      - name: Decide whether to publish
         id: release_state
-        if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          INPUT_PUBLISH: ${{ inputs.publish_release }}
+          SCHEDULE: ${{ github.event.schedule }}
+          WEEKLY_CRON: "30 0 * * 1"
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "skip_build=true" >> "$GITHUB_OUTPUT"
-            echo "Release $RELEASE_TAG already exists; skipping scheduled build."
-          else
-            echo "skip_build=false" >> "$GITHUB_OUTPUT"
-            echo "Release $RELEASE_TAG does not exist; building latest Frida."
-          fi
+          set -euo pipefail
+          publish=false
+          build=true
+          case "$GITHUB_EVENT_NAME" in
+            push)
+              [[ "$GITHUB_REF_TYPE" == "tag" ]] && publish=true
+              ;;
+            schedule)
+              # gh exits 1 with "release not found" when absent; any other error must fail the job.
+              if out="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName 2>&1)"; then
+                if [[ "$SCHEDULE" == "$WEEKLY_CRON" ]]; then
+                  echo "Release $RELEASE_TAG already exists; weekly build-only check (no publish)."
+                else
+                  echo "Release $RELEASE_TAG already exists; nothing to do on the daily run."
+                  build=false
+                fi
+              elif [[ "$out" == *"release not found"* ]]; then
+                echo "Release $RELEASE_TAG does not exist; will build and publish."
+                publish=true
+              else
+                echo "$out" >&2
+                exit 1
+              fi
+              ;;
+            workflow_dispatch)
+              if [[ "$INPUT_PUBLISH" == "true" ]]; then
+                if [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]; then
+                  publish=true
+                else
+                  echo "::warning::publish_release ignored: only allowed from $DEFAULT_BRANCH (ref is $GITHUB_REF)."
+                fi
+              fi
+              ;;
+          esac
+          {
+            echo "publish=$publish"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+          echo "publish=$publish build=$build"
 
       - name: Install build dependencies
-        if: steps.release_state.outputs.skip_build != 'true'
+        if: steps.release_state.outputs.build == 'true'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build zip unzip xz-utils curl
 
       - name: Set up Android SDK
-        if: steps.release_state.outputs.skip_build != 'true'
-        uses: android-actions/setup-android@v4.0.1
+        if: steps.release_state.outputs.build == 'true'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          # The default list includes the legacy `tools` package, which Google removed
+          # from the SDK repository (sdkmanager: "Failed to find package 'tools'").
+          packages: platform-tools
 
       - name: Install Android NDK
-        if: steps.release_state.outputs.skip_build != 'true'
+        if: steps.release_state.outputs.build == 'true'
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
+          set -euo pipefail
+          # `yes` gets SIGPIPE once sdkmanager exits; only sdkmanager's status matters.
+          set +o pipefail
+          yes | sdkmanager --licenses
+          set -o pipefail
           sdkmanager --install "ndk;27.2.12479018"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Build module
-        if: steps.release_state.outputs.skip_build != 'true'
+        if: steps.release_state.outputs.build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: scripts/build-all.sh
 
       - name: Upload workflow artifact
-        if: steps.release_state.outputs.skip_build != 'true'
-        uses: actions/upload-artifact@v7
+        if: steps.release_state.outputs.build == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frida-magisk-official-${{ env.FRIDA_VERSION }}
           path: |
@@ -116,27 +173,79 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  publish:
+    needs: build
+    # Never publish from forks, pull requests or non-default branches.
+    if: >-
+      needs.build.outputs.publish == 'true' &&
+      needs.build.outputs.build == 'true' &&
+      github.repository == 'xjoker/frida-magisk' &&
+      github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: frida-magisk-official-${{ needs.build.outputs.frida_version }}
+          path: dist
+
       - name: Publish GitHub Release
-        if: steps.release_state.outputs.skip_build != 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
         env:
           GH_TOKEN: ${{ github.token }}
+          FRIDA_VERSION: ${{ needs.build.outputs.frida_version }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
         shell: bash
         run: |
+          set -euo pipefail
           tag="$RELEASE_TAG"
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             tag="$GITHUB_REF_NAME"
           fi
 
           notes="Automated frida-magisk official build for Frida $FRIDA_VERSION."$'\n\n'"Assets include a universal ZIP and per-ABI ZIPs. Prefer the matching ABI package for smaller downloads."
-          if [[ -n "${FRIDA_ALLOW_UNVERIFIED:-}" ]]; then
-            notes="$notes"$'\n\n'"Note: this Frida version is not locally pinned in scripts/fetch-frida-assets.sh; assets were downloaded from the official frida/frida GitHub release during CI."
-          fi
+          notes="$notes"$'\n\n'"Frida server/gadget assets were verified against the SHA-256 digests published by the GitHub releases API for frida/frida $FRIDA_VERSION (or the checksums pinned in scripts/fetch-frida-assets.sh)."
 
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/frida-magisk-[0-9]*.zip dist/frida-magisk-[0-9]*.zip.sha256 --clobber
+          shopt -s failglob
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null; then
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" dist/frida-magisk-[0-9]*.zip dist/frida-magisk-[0-9]*.zip.sha256 --clobber
           else
-            gh release create "$tag" dist/frida-magisk-[0-9]*.zip dist/frida-magisk-[0-9]*.zip.sha256 \
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" dist/frida-magisk-[0-9]*.zip dist/frida-magisk-[0-9]*.zip.sha256 \
               --target "$GITHUB_SHA" \
               --title "$tag" \
               --notes "$notes"
           fi
+
+      - name: Check out default branch for update.json
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: repo
+
+      # Only reachable through the gated publish path above (xjoker/frida-magisk,
+      # non-PR, publish=true). Never moves update.json backwards.
+      - name: Update update/official.json on default branch
+        env:
+          FRIDA_VERSION: ${{ needs.build.outputs.frida_version }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          fi
+          scripts/update-module-json.sh "$FRIDA_VERSION" "$tag" "$GITHUB_REPOSITORY"
+          if git diff --quiet -- update/; then
+            echo "update.json unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update/
+          git commit -m "chore(update): official module $FRIDA_VERSION [skip ci]"
+          git push origin "HEAD:refs/heads/$DEFAULT_BRANCH"

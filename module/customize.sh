@@ -68,6 +68,7 @@ GADGET_LISTEN=127.0.0.1:27043
 GADGET_ON_LOAD=wait
 GADGET_RUNTIME=qjs
 GADGET_INCLUDE_CHILDREN=no
+FRIDA_MAGISK_PACKAGE_FLAVOR=official
 EOF
 fi
 
@@ -104,17 +105,31 @@ PACKAGE_FLAVOR_PREVIOUS=$(config_value FRIDA_MAGISK_PACKAGE_FLAVOR)
 PACKAGE_PROFILE_CHANGED=no
 if [ -n "$PACKAGE_FLAVOR_PREVIOUS" ] && [ "$PACKAGE_FLAVOR_PREVIOUS" != "$PACKAGE_FLAVOR_CURRENT" ]; then
   PACKAGE_PROFILE_CHANGED=yes
-fi
-if [ -z "$PACKAGE_FLAVOR_PREVIOUS" ] && [ "$PACKAGE_FLAVOR_CURRENT" != "official" ]; then
-  PACKAGE_PROFILE_CHANGED=yes
-fi
-if [ -z "$PACKAGE_FLAVOR_PREVIOUS" ] && [ "$PACKAGE_FLAVOR_CURRENT" = "official" ]; then
+elif [ -z "$PACKAGE_FLAVOR_PREVIOUS" ]; then
+  # Older installs / Action writes may omit FRIDA_MAGISK_PACKAGE_FLAVOR.
+  # Infer the previous profile from basenames so a same-flavor upgrade keeps
+  # user listen/mode/gadget settings, while a real profile switch still resets.
   previous_server_basename=$(config_value FRIDA_SERVER_BASENAME)
   previous_gadget_basename=$(config_value GADGET_BASENAME)
-  if { [ -n "$previous_server_basename" ] && [ "$previous_server_basename" != "frida-server" ]; } ||
-     { [ -n "$previous_gadget_basename" ] && [ "$previous_gadget_basename" != "libfrida-gadget.so" ]; }; then
-    PACKAGE_PROFILE_CHANGED=yes
-  fi
+  case "$PACKAGE_FLAVOR_CURRENT" in
+    official)
+      if { [ -n "$previous_server_basename" ] && [ "$previous_server_basename" != "frida-server" ]; } ||
+         { [ -n "$previous_gadget_basename" ] && [ "$previous_gadget_basename" != "libfrida-gadget.so" ]; }; then
+        PACKAGE_PROFILE_CHANGED=yes
+      fi
+      ;;
+    *)
+      if [ -n "$previous_server_basename" ] && [ "$previous_server_basename" != "$FRIDA_SERVER_BASENAME" ]; then
+        PACKAGE_PROFILE_CHANGED=yes
+      elif [ -n "$previous_gadget_basename" ] && [ "$previous_gadget_basename" != "$GADGET_BASENAME" ]; then
+        PACKAGE_PROFILE_CHANGED=yes
+      elif { [ -z "$previous_server_basename" ] || [ "$previous_server_basename" = "frida-server" ]; } &&
+           { [ -z "$previous_gadget_basename" ] || [ "$previous_gadget_basename" = "libfrida-gadget.so" ]; }; then
+        # Fresh install heredoc / previous official-looking config → apply package defaults.
+        PACKAGE_PROFILE_CHANGED=yes
+      fi
+      ;;
+  esac
 fi
 
 set_config_value FRIDA_SERVER_BASENAME "$FRIDA_SERVER_BASENAME"

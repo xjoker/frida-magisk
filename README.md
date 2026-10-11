@@ -63,10 +63,10 @@ MODULE_ABIS="arm64-v8a" scripts/build-all.sh
 MODULE_ABIS="universal arm64-v8a" scripts/build-all.sh
 ```
 
-`scripts/fetch-frida-assets.sh` contains pinned SHA-256 checks for known versions. To build a Frida version that is not pinned locally, opt in explicitly:
+`scripts/fetch-frida-assets.sh` always verifies SHA-256. Known versions are pinned in the script; any other version is verified against the `digest` that the GitHub releases API publishes for each `frida/frida` asset. There is no unverified mode. Set `GH_TOKEN` to avoid API rate limits:
 
 ```bash
-FRIDA_VERSION=18.0.0 FRIDA_ALLOW_UNVERIFIED=1 scripts/build-all.sh
+FRIDA_VERSION=17.23.3 scripts/build-all.sh
 ```
 
 Outputs:
@@ -94,14 +94,15 @@ Supported triggers:
 
 - `push` to `main` or `master`: builds and uploads workflow artifacts.
 - `push` tag `v*`: builds the version from the tag, then creates or updates the matching GitHub Release.
-- `workflow_dispatch`: accepts `frida_version`, `allow_unverified`, and `publish_release`.
-- `schedule`: runs daily at `00:00 UTC`, checks the latest upstream Frida release, and creates a release only when this repository does not already have `v<latest-version>`.
+- `pull_request`: build only, never publishes.
+- `workflow_dispatch`: accepts `frida_version` and `publish_release` (publishing is only honoured on the default branch).
+- `schedule`: runs daily at `00:00 UTC`, checks the latest upstream Frida release, and creates a release only when this repository does not already have `v<latest-version>`; otherwise it still runs a build-only check so toolchain breakage is visible.
 
 Manual build examples:
 
 ```bash
-gh workflow run build.yml -f frida_version=17.9.1 -f allow_unverified=false -f publish_release=false
-gh workflow run build.yml -f frida_version=latest -f allow_unverified=true -f publish_release=true
+gh workflow run build.yml -f frida_version=17.9.1 -f publish_release=false
+gh workflow run build.yml -f frida_version=latest -f publish_release=true
 ```
 
 Release rule:
@@ -109,6 +110,15 @@ Release rule:
 - Scheduled latest build publishes `v<frida-version>` automatically if missing.
 - Tag build publishes the pushed tag.
 - Manual build publishes only when `publish_release=true`.
+
+
+### Module updates (updateJson)
+
+- The official module's `module.prop` sets `updateJson` to `update/official.json` on `main`, so Magisk / KernelSU can offer in-app updates. The update points at the `universal` ZIP.
+- After a successful release, the publish job (only on `xjoker/frida-magisk`, never on PRs, forks or other branches) updates `update/official.json` and `update/official-changelog.md` and pushes the change to the default branch. It never moves to a lower version.
+- The antidetect flavor removes `updateJson`, because a public URL would undo its renaming. `scripts/verify-antidetect-package.sh` checks that it is gone.
+- Owned antidetect asset archives are verified against `antidetect/hashes.sha256` in this repository. See `antidetect/README.md`.
+- Schedule: the daily run publishes new Frida versions. The Monday run also does a build-only check when the latest release already exists.
 
 ## Device Deployment
 
@@ -126,7 +136,7 @@ adb -s <serial> shell su -c id
 Install with KernelSU / SukiSU:
 
 ```bash
-adb -s <serial> push dist/frida-magisk-17.9.1.zip /data/local/tmp/frida-magisk.zip
+adb -s <serial> push dist/frida-magisk-17.9.1-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
 adb -s <serial> shell su -c '/data/adb/ksud module install /data/local/tmp/frida-magisk.zip'
 adb -s <serial> reboot
 ```
@@ -134,7 +144,7 @@ adb -s <serial> reboot
 Install with Magisk CLI when available:
 
 ```bash
-adb -s <serial> push dist/frida-magisk-17.9.1.zip /data/local/tmp/frida-magisk.zip
+adb -s <serial> push dist/frida-magisk-17.9.1-arm64-v8a.zip /data/local/tmp/frida-magisk.zip
 adb -s <serial> shell su -c 'magisk --install-module /data/local/tmp/frida-magisk.zip'
 adb -s <serial> reboot
 ```

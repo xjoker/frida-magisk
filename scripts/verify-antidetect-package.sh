@@ -122,6 +122,10 @@ if grep -Eq 'frida-server|libfrida-gadget(\.config)?\.so|/data/local/tmp/frida_m
   echo "Default static module surfaces are still present in packaged text files." >&2
   exit 1
 fi
+if unzip -p "$zip_path" module.prop | grep -q '^updateJson='; then
+  echo "Antidetect module.prop must not carry the public updateJson URL." >&2
+  exit 1
+fi
 if grep -Eiq 'replace_me|changeme|change_me' "$tmp/static-surfaces.txt"; then
   echo "Placeholder-like values are still present in packaged text files." >&2
   exit 1

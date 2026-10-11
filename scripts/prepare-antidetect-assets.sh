@@ -6,7 +6,9 @@ OUT="${FRIDA_ASSET_DIR:-$ROOT/assets/antidetect}"
 VERSION="${ANTIDETECT_VERSION:-${FRIDA_VERSION:-}}"
 SOURCE_DIR="${ANTIDETECT_ASSET_DIR:-$ROOT/assets/antidetect-source}"
 SOURCE_ARCHIVE="${ANTIDETECT_ASSET_ARCHIVE:-}"
-ARCHIVE_SHA256_FILE="${ANTIDETECT_ARCHIVE_SHA256_FILE:-}"
+# Trusted archive hashes come from a file committed to this repository, never from
+# the same release/location as the archive itself.
+ARCHIVE_SHA256_FILE="${ANTIDETECT_ARCHIVE_SHA256_FILE:-$ROOT/antidetect/hashes.sha256}"
 PAYLOAD_SHA256SUMS_FILE="${ANTIDETECT_PAYLOAD_SHA256SUMS_FILE:-${ANTIDETECT_SHA256SUMS_FILE:-}}"
 ALLOW_UNVERIFIED="${ANTIDETECT_ALLOW_UNVERIFIED:-0}"
 ARCHES=(arm arm64 x86 x86_64)
@@ -103,12 +105,16 @@ prepare_source() {
     SOURCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/antidetect-assets.XXXXXX")"
     cleanup_dirs+=("$SOURCE_DIR")
 
-    if [[ -z "$ARCHIVE_SHA256_FILE" && -f "$SOURCE_ARCHIVE.sha256" ]]; then
-      ARCHIVE_SHA256_FILE="$SOURCE_ARCHIVE.sha256"
-    fi
-    if [[ -n "$ARCHIVE_SHA256_FILE" ]]; then
+    if [[ -f "$ARCHIVE_SHA256_FILE" ]] && expected_sha256 "$SOURCE_ARCHIVE" "$ARCHIVE_SHA256_FILE" >/dev/null; then
       verify_file "$SOURCE_ARCHIVE" "$ARCHIVE_SHA256_FILE"
       archive_verified=1
+      echo "Verified $(basename "$SOURCE_ARCHIVE") against $ARCHIVE_SHA256_FILE" >&2
+    elif [[ "$ALLOW_UNVERIFIED" == "1" ]]; then
+      echo "WARNING: no trusted SHA-256 for $(basename "$SOURCE_ARCHIVE") in $ARCHIVE_SHA256_FILE; continuing because ANTIDETECT_ALLOW_UNVERIFIED=1." >&2
+    else
+      echo "No trusted SHA-256 for $(basename "$SOURCE_ARCHIVE") in $ARCHIVE_SHA256_FILE." >&2
+      echo "Add '<sha256>  $(basename "$SOURCE_ARCHIVE")' to antidetect/hashes.sha256 (see antidetect/README.md)." >&2
+      exit 1
     fi
     extract_archive "$SOURCE_ARCHIVE" "$SOURCE_DIR"
   elif [[ ! -d "$SOURCE_DIR" ]]; then
@@ -117,7 +123,8 @@ prepare_source() {
     exit 1
   fi
 
-  if [[ -z "$PAYLOAD_SHA256SUMS_FILE" && -f "$SOURCE_DIR/SHA256SUMS" ]]; then
+  # An embedded SHA256SUMS is only meaningful once the archive itself was verified.
+  if [[ -z "$PAYLOAD_SHA256SUMS_FILE" && ( "$archive_verified" == "1" || -z "$SOURCE_ARCHIVE" ) && -f "$SOURCE_DIR/SHA256SUMS" ]]; then
     PAYLOAD_SHA256SUMS_FILE="$SOURCE_DIR/SHA256SUMS"
   fi
 }
