@@ -183,6 +183,7 @@ zygisk_runtime_fallback="/data/local/tmp/frida_magisk"
 zygisk_gadget_fallback="libfrida-gadget.so"
 zygisk_module_class="FridaToolboxInjector"
 zygisk_output_name="frida_magisk_zygisk"
+zygisk_quiet=0
 
 if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
   load_antidetect_profile
@@ -197,6 +198,9 @@ if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
   zygisk_gadget_fallback="${ANTIDETECT_ZYGISK_GADGET_FALLBACK:-$gadget_basename}"
   zygisk_module_class="${ANTIDETECT_ZYGISK_MODULE_CLASS:-${profile_token}_zygisk}"
   zygisk_output_name="${ANTIDETECT_ZYGISK_OUTPUT_NAME:-${profile_token}_zygisk}"
+  # Antidetect never writes logcat: those lines are emitted from inside the target
+  # process, so the app can read them from its own log buffer.
+  zygisk_quiet=1
 fi
 
 validate_cmake_string ZYGISK_LOG_TAG "$zygisk_log_tag"
@@ -228,7 +232,8 @@ for abi in "${abis[@]}"; do
     -DZYGISK_RUNTIME_FALLBACK="$zygisk_runtime_fallback" \
     -DZYGISK_GADGET_FALLBACK="$zygisk_gadget_fallback" \
     -DZYGISK_MODULE_CLASS="$zygisk_module_class" \
-    -DZYGISK_OUTPUT_NAME="$zygisk_output_name"
+    -DZYGISK_OUTPUT_NAME="$zygisk_output_name" \
+    -DZYGISK_QUIET="$zygisk_quiet"
   cmake --build "$build_dir" --config Release
   cp "$build_dir/out/lib$zygisk_output_name.so" "$OUT/$abi.so"
   if [[ -x "$STRIP" ]]; then

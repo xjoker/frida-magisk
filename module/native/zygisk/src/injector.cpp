@@ -1,4 +1,3 @@
-#include <android/log.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <jni.h>
@@ -8,6 +7,14 @@
 #include <cstring>
 
 #include "zygisk.hpp"
+
+#ifndef ZYGISK_QUIET
+#define ZYGISK_QUIET 0
+#endif
+
+#if !ZYGISK_QUIET
+#include <android/log.h>
+#endif
 
 namespace {
 
@@ -27,7 +34,9 @@ namespace {
 #define ZYGISK_MODULE_CLASS FridaToolboxInjector
 #endif
 
+#if !ZYGISK_QUIET
 constexpr char kTag[] = ZYGISK_LOG_TAG;
+#endif
 constexpr char kModuleFallback[] = ZYGISK_MODULE_FALLBACK;
 constexpr char kRuntimeBase[] = ZYGISK_RUNTIME_FALLBACK;
 constexpr char kGadgetBasename[] = ZYGISK_GADGET_FALLBACK;
@@ -44,8 +53,16 @@ constexpr char kAbi[] = "x86";
 constexpr char kAbi[] = "unknown";
 #endif
 
+#if ZYGISK_QUIET
+// The injection logs run inside the target app process, so the app can read its
+// own log buffer and learn both that it was injected and from where. Silent build
+// drops the call, the tag and the liblog dependency.
+#define LOGI(...) ((void)0)
+#define LOGW(...) ((void)0)
+#else
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, kTag, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, kTag, __VA_ARGS__)
+#endif
 
 void copy_string(char *dst, size_t dst_size, const char *src) {
   if (dst_size == 0) return;
@@ -188,11 +205,15 @@ public:
     if (!should_inject_) return;
 
     void *handle = dlopen(gadget_path_, RTLD_NOW | RTLD_GLOBAL);
+#if ZYGISK_QUIET
+    (void)handle;
+#else
     if (handle == nullptr) {
       LOGW("dlopen failed abi=%s process=%s path=%s error=%s", kAbi, process_, gadget_path_, dlerror());
     } else {
       LOGI("loaded payload abi=%s process=%s path=%s handle=%p", kAbi, process_, gadget_path_, handle);
     }
+#endif
   }
 
 private:

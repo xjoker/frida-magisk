@@ -7,6 +7,10 @@ set(ZYGISK_RUNTIME_FALLBACK "/data/local/tmp/frida_magisk" CACHE STRING "Fallbac
 set(ZYGISK_GADGET_FALLBACK "libfrida-gadget.so" CACHE STRING "Fallback Gadget basename")
 set(ZYGISK_MODULE_CLASS "FridaToolboxInjector" CACHE STRING "Zygisk module C++ class name")
 set(ZYGISK_OUTPUT_NAME "frida_magisk_zygisk" CACHE STRING "Native library output name")
+# 1 compiles the logcat output out entirely: no LOGI/LOGW call, no liblog linkage.
+# postAppSpecialize runs inside the target app process, so those lines are readable
+# from the app's own log buffer and confirm the injection.
+set(ZYGISK_QUIET "0" CACHE STRING "Compile out Zygisk logcat output (1 = silent)")
 
 add_library(frida_magisk_zygisk SHARED src/injector.cpp)
 set_target_properties(frida_magisk_zygisk PROPERTIES OUTPUT_NAME "${ZYGISK_OUTPUT_NAME}")
@@ -19,6 +23,7 @@ target_compile_definitions(frida_magisk_zygisk PRIVATE
   ZYGISK_RUNTIME_FALLBACK="${ZYGISK_RUNTIME_FALLBACK}"
   ZYGISK_GADGET_FALLBACK="${ZYGISK_GADGET_FALLBACK}"
   ZYGISK_MODULE_CLASS=${ZYGISK_MODULE_CLASS}
+  ZYGISK_QUIET=${ZYGISK_QUIET}
 )
 target_compile_options(frida_magisk_zygisk PRIVATE
   -Wall
@@ -29,4 +34,8 @@ target_compile_options(frida_magisk_zygisk PRIVATE
   -fno-rtti
 )
 target_link_options(frida_magisk_zygisk PRIVATE -Wl,--gc-sections)
-target_link_libraries(frida_magisk_zygisk PRIVATE log dl)
+if(ZYGISK_QUIET)
+  target_link_libraries(frida_magisk_zygisk PRIVATE dl)
+else()
+  target_link_libraries(frida_magisk_zygisk PRIVATE log dl)
+endif()

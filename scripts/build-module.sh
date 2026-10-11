@@ -454,6 +454,13 @@ if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
     -e "s|^GADGET_ON_LOAD=.*|GADGET_ON_LOAD=$GADGET_ON_LOAD|" \
     -e "s|^GADGET_RUNTIME=.*|GADGET_RUNTIME=$GADGET_RUNTIME|" \
     -e "s|^GADGET_INCLUDE_CHILDREN=.*|GADGET_INCLUDE_CHILDREN=$GADGET_INCLUDE_CHILDREN|" \
+    -e "s|frida-magisk|$MODULE_ID|g" \
+    -e "s|frida-ps -U|your client|g" \
+    -e "s|frida_pid|svc_pid|g" \
+    -e "s|start_frida|start_svc|g" \
+    -e "s|stop_frida|stop_svc|g" \
+    -e "s|Frida Gadget|Gadget backend|g" \
+    -e "s|Frida|$MODULE_NAME|g" \
       "$profile_file"
     rm -f "$profile_file.bak"
   done
@@ -487,6 +494,9 @@ if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
     -e "s|libfrida-gadget.config.so|$GADGET_CONFIG_BASENAME|g" \
     -e "s|libfrida-gadget.so|$GADGET_BASENAME|g" \
     -e "s|GADGET_ON_LOAD=wait|GADGET_ON_LOAD=$GADGET_ON_LOAD|g" \
+    -e "s|frida-magisk|$MODULE_ID|g" \
+    -e "s|Frida Gadget|Gadget backend|g" \
+    -e "s|Frida|$MODULE_NAME|g" \
     "$tmp/README.md"
   rm -f "$tmp/README.md.bak"
 
@@ -502,6 +512,9 @@ if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
       -e "s|libfrida-gadget.config.so|$GADGET_CONFIG_BASENAME|g" \
       -e "s|libfrida-gadget.so|$GADGET_BASENAME|g" \
       -e "s|GADGET_CONFIG=$module_path/gadget/arm64-v8a/$GADGET_CONFIG_BASENAME|GADGET_CONFIG=$gadget_runtime_config|g" \
+      -e "s|frida-magisk|$MODULE_ID|g" \
+      -e "s|Frida Gadget|Gadget backend|g" \
+      -e "s|Frida|$MODULE_NAME|g" \
       "$tmp/webroot/app.js"
     rm -f "$tmp/webroot/app.js.bak"
   fi
@@ -511,6 +524,9 @@ if [[ "$PACKAGE_FLAVOR" == "antidetect" ]]; then
       -e "s|frida-server|$FRIDA_SERVER_BASENAME|g" \
       -e "s|127.0.0.1:27042|$FRIDA_LISTEN|g" \
       -e "s|127.0.0.1:27043|$GADGET_LISTEN|g" \
+      -e "s|frida-magisk|$MODULE_ID|g" \
+      -e "s|Frida Gadget|Gadget backend|g" \
+      -e "s|Frida|$MODULE_NAME|g" \
       "$tmp/webroot/index.html"
     rm -f "$tmp/webroot/index.html.bak"
   fi

@@ -112,14 +112,15 @@ fi
 
 unzip -Z1 "$zip_path" > "$tmp/entries.txt"
 unzip -p "$zip_path" action.sh customize.sh > "$tmp/scripts.txt"
-unzip -p "$zip_path" module.prop README.md webroot/app.js webroot/index.html action.sh customize.sh > "$tmp/static-surfaces.txt"
+unzip -p "$zip_path" module.prop README.md package.env webroot/app.js webroot/index.html \
+  webroot/style.css action.sh customize.sh service.sh uninstall.sh > "$tmp/static-surfaces.txt"
 
 if grep -Eq '^(FRIDA_RUNTIME_DIR=/data/local/tmp/frida_magisk|FRIDA_LISTEN=127\.0\.0\.1:27042|GADGET_CONFIG_BASENAME=libfrida-gadget\.config\.so|GADGET_LISTEN=127\.0\.0\.1:27043|GADGET_ON_LOAD=wait)$' "$tmp/scripts.txt"; then
   echo "Default runtime profile values are still present in packaged scripts." >&2
   exit 1
 fi
-if grep -Eq 'frida-server|libfrida-gadget(\.config)?\.so|/data/local/tmp/frida_magisk|/data/adb/modules/frida_magisk|127\.0\.0\.1:27042|127\.0\.0\.1:27043|Frida Magisk' "$tmp/static-surfaces.txt"; then
-  echo "Default static module surfaces are still present in packaged text files." >&2
+if grep -Eq '127\.0\.0\.1:27042|127\.0\.0\.1:27043' "$tmp/static-surfaces.txt"; then
+  echo "Default Frida listen ports are still present in packaged text files." >&2
   exit 1
 fi
 if unzip -p "$zip_path" module.prop | grep -q '^updateJson='; then
@@ -128,6 +129,16 @@ if unzip -p "$zip_path" module.prop | grep -q '^updateJson='; then
 fi
 if grep -Eiq 'replace_me|changeme|change_me' "$tmp/static-surfaces.txt"; then
   echo "Placeholder-like values are still present in packaged text files." >&2
+  exit 1
+fi
+
+# Naming gate: the FRIDA_* keys are the config contract the Zygisk injector reads
+# at runtime, so they stay. Everything else must be free of the upstream name,
+# including brand words such as "Frida Server" or the "frida-magisk" prefix.
+sed -E 's/FRIDA_[A-Z0-9_]*//g' "$tmp/static-surfaces.txt" > "$tmp/static-stripped.txt"
+if grep -Eiq 'frida' "$tmp/static-stripped.txt"; then
+  echo "Frida naming is still present in packaged text files:" >&2
+  grep -Eioh '[A-Za-z_.-]*frida[A-Za-z_.-]*' "$tmp/static-stripped.txt" | sort -u | sed 's/^/  /' >&2
   exit 1
 fi
 
@@ -159,8 +170,14 @@ for abi in "${expected_abis[@]}"; do
     exit 1
   }
   unzip -p "$zip_path" "zygisk/$abi.so" > "$tmp/zygisk-$abi.so"
-  if grep -aEq 'FridaMagiskZygisk|FridaToolboxInjector|frida_magisk_zygisk|/data/adb/modules/frida_magisk|/data/local/tmp/frida_magisk|libfrida-gadget\.so|missing gadget|loaded gadget' "$tmp/zygisk-$abi.so"; then
+  if grep -aEq 'FridaMagiskZygisk|FridaToolboxInjector|frida_magisk_zygisk|/data/adb/modules/frida_magisk|/data/local/tmp/frida_magisk|libfrida-gadget\.so' "$tmp/zygisk-$abi.so"; then
     echo "Default native Zygisk surfaces are still present for $abi." >&2
+    exit 1
+  fi
+  # The injector runs inside the target app process, so its log lines land in the
+  # app's own log buffer and confirm both the injection and its paths.
+  if grep -aEq 'loaded payload|missing payload|dlopen failed|__android_log_print' "$tmp/zygisk-$abi.so"; then
+    echo "Zygisk injector still logs to logcat for $abi." >&2
     exit 1
   fi
   if grep -aEiq 'replace_me|changeme|change_me' "$tmp/zygisk-$abi.so"; then

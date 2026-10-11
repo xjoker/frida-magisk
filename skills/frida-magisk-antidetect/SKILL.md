@@ -105,3 +105,7 @@ Only add target-specific bypass logic after observe mode shows which probe is ac
 - `scripts/verify-antidetect-package.sh dist/frida-magisk-antidetect-*.zip`
 - scan repository changes for forbidden external project names.
 - explain remaining detection surfaces honestly; never claim complete undetectability.
+
+The verifier also fails when the packaged antidetect text still carries a
+`frida` token outside the `FRIDA_*` config keys, or when the packaged Zygisk
+injector still logs to logcat (`ZYGISK_QUIET=1` builds link no liblog).

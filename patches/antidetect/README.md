@@ -47,6 +47,15 @@ Every antidetect build should be checked against at least:
 - Owned asset archives should use a separate archive checksum; unpacked payloads
   may additionally provide a `SHA256SUMS` manifest for the server/Gadget files.
 - `strings` output for common Frida/Gadget/runtime markers.
+- packaged text files free of the upstream name. The
+  `FRIDA_*` config keys stay, because the Zygisk injector reads them at
+  runtime; everything else, including brand words, must be rewritten.
+  `scripts/verify-antidetect-package.sh` fails the build on any leftover
+  `frida` token outside that key namespace.
+- logcat written from inside the target app process. Those lines are readable
+  from the app's own log buffer, so the antidetect Zygisk build compiles its
+  logging out (`ZYGISK_QUIET=1`, no liblog dependency) and the verifier fails if
+  the packaged injector still carries log lines or `__android_log_print`.
 - process command line and thread names.
 - `/proc/<pid>/maps` and file descriptor exposure.
 - server and Gadget attach smoke tests.
