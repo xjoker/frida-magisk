@@ -73,8 +73,10 @@ jobs:
           fi
 
           echo "FRIDA_VERSION=$version" >> "$GITHUB_ENV"
-          echo "frida_version=$version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=v$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "frida_version=$version"
+            echo "release_tag=v$version"
+          } >> "$GITHUB_OUTPUT"
           echo "Using Frida $version"
 
       - name: Decide whether to publish

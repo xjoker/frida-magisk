@@ -80,12 +80,16 @@ jobs:
             exit 1
           fi
 
-          echo "frida_version=$version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=v$version-antidetect" >> "$GITHUB_OUTPUT"
-          echo "FRIDA_VERSION=$version" >> "$GITHUB_ENV"
-          echo "ANTIDETECT_VERSION=$version" >> "$GITHUB_ENV"
-          echo "FRIDA_PACKAGE_FLAVOR=antidetect" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=v$version-antidetect" >> "$GITHUB_ENV"
+          {
+            echo "frida_version=$version"
+            echo "release_tag=v$version-antidetect"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "FRIDA_VERSION=$version"
+            echo "ANTIDETECT_VERSION=$version"
+            echo "FRIDA_PACKAGE_FLAVOR=antidetect"
+            echo "RELEASE_TAG=v$version-antidetect"
+          } >> "$GITHUB_ENV"
 
           if [[ "${INPUT_ALLOW_UNVERIFIED:-}" == "true" ]]; then
             echo "ANTIDETECT_ALLOW_UNVERIFIED=1" >> "$GITHUB_ENV"
