@@ -249,3 +249,26 @@ jobs:
           git add update/
           git commit -m "chore(update): official module $FRIDA_VERSION [skip ci]"
           git push origin "HEAD:refs/heads/$DEFAULT_BRANCH"
+
+  # Cheap static and regression checks; no Android toolchain needed.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Shell syntax
+        run: bash -n module/*.sh scripts/*.sh
+
+      - name: Config upgrade regression tests
+        run: bash scripts/test-config-upgrade.sh
+
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP/actionlint"
+          "$RUNNER_TEMP/actionlint/actionlint" -color

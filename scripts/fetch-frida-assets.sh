@@ -36,28 +36,30 @@ release_digests=""
 # Resolve the expected SHA-256 from the GitHub releases API `digest` field
 # (computed by GitHub at upload time). Used for every version that is not
 # pinned locally above. There is no unverified fallback.
-sha256_from_release_api() {
-  local name="$1"
-  if [[ -z "$release_digests" ]]; then
-    local api="https://api.github.com/repos/frida/frida/releases/tags/$VERSION"
-    local auth=()
-    if [[ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]]; then
-      auth=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}")
-    fi
-    release_digests="$(curl -fsSL --retry 3 \
-      -H "Accept: application/vnd.github+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      "${auth[@]}" "$api" \
-      | python3 -c 'import json, sys
+# Runs in the calling shell so `release_digests` is fetched once per run, not
+# once per asset. A command substitution would isolate it in a subshell.
+load_release_digests() {
+  if [[ -n "$release_digests" ]]; then
+    return 0
+  fi
+  local api="https://api.github.com/repos/frida/frida/releases/tags/$VERSION"
+  local auth=()
+  if [[ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]]; then
+    auth=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}")
+  fi
+  release_digests="$(curl -fsSL --retry 3 \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "${auth[@]}" "$api" \
+    | python3 -c 'import json, sys
 for a in json.load(sys.stdin).get("assets", []):
     d = a.get("digest") or ""
     if d.startswith("sha256:"):
         print(a["name"], d[len("sha256:"):])')" || {
-      echo "Failed to query $api for asset digests." >&2
-      return 1
-    }
-  fi
-  awk -v n="$name" '$1 == n { print $2; found = 1 } END { exit !found }' <<<"$release_digests"
+    echo "Failed to query $api for asset digests." >&2
+    return 1
+  }
+  [[ -n "$release_digests" ]]
 }
 
 download_one() {
@@ -65,7 +67,9 @@ download_one() {
   local archive="$OUT/$name"
   local expected="" actual=""
   if ! expected="$(sha256_for "$name")"; then
-    if ! expected="$(sha256_from_release_api "$name")" || [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+    if ! load_release_digests ||
+       ! expected="$(awk -v n="$name" '$1 == n { print $2; found = 1 } END { exit !found }' <<<"$release_digests")" ||
+       [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
       echo "No SHA-256 available for $name (not pinned locally and no digest from the GitHub releases API)." >&2
       exit 1
     fi
