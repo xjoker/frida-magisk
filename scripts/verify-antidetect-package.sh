@@ -184,6 +184,21 @@ for abi in "${expected_abis[@]}"; do
     echo "Placeholder-like native Zygisk value is still present for $abi." >&2
     exit 1
   fi
+
+  # Owned server/Gadget binaries must not carry upstream runtime markers. This
+  # is opt-in because official-baseline inputs are unmodified upstream
+  # binaries; CI enables it only on the owned-asset path (fail-closed there).
+  if [[ "${ANTIDETECT_SCAN_BINARIES:-0}" == "1" ]]; then
+    unzip -p "$zip_path" "bin/$abi/$server_name" > "$tmp/server-$abi.bin"
+    unzip -p "$zip_path" "gadget/$abi/$gadget_name" > "$tmp/gadget-$abi.bin"
+    for payload in "$tmp/server-$abi.bin" "$tmp/gadget-$abi.bin"; do
+      if grep -aEiq 'frida|gum-js' "$payload"; then
+        echo "Upstream runtime markers remain in $(basename "$payload") for $abi:" >&2
+        { grep -aEioh '[A-Za-z_.:/-]*(frida|gum-js)[A-Za-z_.:/-]*' "$payload" | sort -u | head -20; } 2>/dev/null | sed 's/^/  /' >&2 || true
+        exit 1
+      fi
+    done
+  fi
 done
 
 echo "Verified antidetect package surface: $zip_path"

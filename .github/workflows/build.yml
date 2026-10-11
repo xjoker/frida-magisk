@@ -154,8 +154,8 @@ jobs:
           set +o pipefail
           yes | sdkmanager --licenses
           set -o pipefail
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          sdkmanager --install "ndk;30.0.16248370"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
 
       - name: Build module
         if: steps.release_state.outputs.build == 'true'
@@ -264,6 +264,9 @@ jobs:
 
       - name: Shell syntax
         run: bash -n module/*.sh scripts/*.sh
+
+      - name: WebUI JavaScript syntax
+        run: node --check module/webroot/app.js
 
       - name: Config upgrade regression tests
         run: bash scripts/test-config-upgrade.sh

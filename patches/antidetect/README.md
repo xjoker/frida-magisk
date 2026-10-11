@@ -46,7 +46,11 @@ Every antidetect build should be checked against at least:
 
 - Owned asset archives should use a separate archive checksum; unpacked payloads
   may additionally provide a `SHA256SUMS` manifest for the server/Gadget files.
-- `strings` output for common Frida/Gadget/runtime markers.
+- `strings` output for common Frida/Gadget/runtime markers. When
+  `ANTIDETECT_SCAN_BINARIES=1` is set, `scripts/verify-antidetect-package.sh`
+  performs this scan on the packaged server/Gadget binaries and fails the build
+  on any upstream runtime marker. The CI workflow enables it on the owned-asset
+  path; official-baseline inputs are unmodified upstream binaries and skip it.
 - packaged text files free of the upstream name. The
   `FRIDA_*` config keys stay, because the Zygisk injector reads them at
   runtime; everything else, including brand words, must be rewritten.

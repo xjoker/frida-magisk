@@ -118,8 +118,8 @@ jobs:
           set +o pipefail
           yes | sdkmanager --licenses
           set -o pipefail
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          sdkmanager --install "ndk;30.0.16248370"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
 
       - name: Build antidetect module
         id: build
@@ -160,6 +160,9 @@ jobs:
             # Expected archive hash comes from antidetect/hashes.sha256 committed in this repo
             # (fail-closed in prepare-antidetect-assets.sh), not from the asset release.
             export ANTIDETECT_ASSET_ARCHIVE="$PWD/build/antidetect-assets/$archive_name"
+            # Owned binaries carry the naming contract; scan them for upstream
+            # runtime markers before publishing (fail-closed).
+            export ANTIDETECT_SCAN_BINARIES=1
             bash scripts/prepare-antidetect-assets.sh
           else
             echo "asset_source=official-baseline" >> "$GITHUB_OUTPUT"
