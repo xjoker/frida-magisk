@@ -1,5 +1,5 @@
-# Frida Magisk 17.24.3
+# Frida Magisk 17.25.0
 
-Automated build for Frida 17.24.3.
+Automated build for Frida 17.25.0.
 
-Release: https://github.com/xjoker/frida-magisk/releases/tag/v17.24.3
+Release: https://github.com/xjoker/frida-magisk/releases/tag/v17.25.0
