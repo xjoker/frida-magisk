@@ -1,6 +1,6 @@
 {
-  "version": "17.28.0",
-  "versionCode": 172800,
-  "zipUrl": "https://github.com/xjoker/frida-magisk/releases/download/v17.28.0/frida-magisk-17.28.0-universal.zip",
+  "version": "17.28.1",
+  "versionCode": 172801,
+  "zipUrl": "https://github.com/xjoker/frida-magisk/releases/download/v17.28.1/frida-magisk-17.28.1-universal.zip",
   "changelog": "https://raw.githubusercontent.com/xjoker/frida-magisk/main/update/official-changelog.md"
 }
